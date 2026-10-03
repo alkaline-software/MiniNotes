@@ -25,7 +25,7 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/pingfan-hu/MiniNotes/main/appcast.xml</string>
+	<string>https://raw.githubusercontent.com/alkaline-software/MiniNotes/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>opaYYNjjYgCQJ7jkDvI/eBoF3lfZJ5+qwaMFT20VE+k=</string>
 </dict>

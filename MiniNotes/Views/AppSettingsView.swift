@@ -305,7 +305,7 @@ private struct AboutPane: View {
                 .foregroundColor(.secondary)
                 .padding(.bottom, 16)
 
-            Link(destination: URL(string: "https://github.com/pingfan-hu/MiniNotes")!) {
+            Link(destination: URL(string: "https://github.com/alkaline-software/MiniNotes")!) {
                 Image("github-logo")
                     .resizable()
                     .scaledToFit()

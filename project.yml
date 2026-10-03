@@ -39,5 +39,5 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSUIElement: YES
         NSPrincipalClass: NSApplication
-        SUFeedURL: "https://raw.githubusercontent.com/pingfan-hu/MiniNotes/main/appcast.xml"
+        SUFeedURL: "https://raw.githubusercontent.com/alkaline-software/MiniNotes/main/appcast.xml"
         SUPublicEDKey: "opaYYNjjYgCQJ7jkDvI/eBoF3lfZJ5+qwaMFT20VE+k="

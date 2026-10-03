@@ -2,14 +2,14 @@
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
     <title>MiniNotes Changelog</title>
-    <link>https://raw.githubusercontent.com/pingfan-hu/MiniNotes/main/appcast.xml</link>
+    <link>https://raw.githubusercontent.com/alkaline-software/MiniNotes/main/appcast.xml</link>
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
 
     <!-- Latest release -->
     <item>
       <title>Version 0.4.1</title>
-      <link>https://github.com/pingfan-hu/MiniNotes/releases/tag/v0.4.1</link>
+      <link>https://github.com/alkaline-software/MiniNotes/releases/tag/v0.4.1</link>
       <sparkle:version>0.4.1</sparkle:version>
       <sparkle:shortVersionString>0.4.1</sparkle:shortVersionString>
       <description><![CDATA[
@@ -24,7 +24,7 @@
       ]]></description>
       <pubDate>Wed, 12 Aug 2026 03:28:18 +0000</pubDate>
       <enclosure
-        url="https://github.com/pingfan-hu/MiniNotes/releases/download/v0.4.1/MiniNotes-v0.4.1.dmg"
+        url="https://github.com/alkaline-software/MiniNotes/releases/download/v0.4.1/MiniNotes-v0.4.1.dmg"
         sparkle:edSignature="LYfZuRavJYaGQjiKWzFaXG121iZJ00jDu/qgW5VrF6PqoPff38OaUiOME7j/nAvAk5HML5Ax2Ie914C2zdhMCw=="
         sparkle:version="0.4.1"
         sparkle:shortVersionString="0.4.1"
@@ -36,7 +36,7 @@
     <!-- Previous release -->
     <item>
       <title>Version 0.4.0</title>
-      <link>https://github.com/pingfan-hu/MiniNotes/releases/tag/v0.4.0</link>
+      <link>https://github.com/alkaline-software/MiniNotes/releases/tag/v0.4.0</link>
       <sparkle:version>0.4.0</sparkle:version>
       <sparkle:shortVersionString>0.4.0</sparkle:shortVersionString>
       <description><![CDATA[
@@ -54,7 +54,7 @@
       ]]></description>
       <pubDate>Wed, 12 Aug 2026 01:56:12 +0000</pubDate>
       <enclosure
-        url="https://github.com/pingfan-hu/MiniNotes/releases/download/v0.4.0/MiniNotes-v0.4.0.dmg"
+        url="https://github.com/alkaline-software/MiniNotes/releases/download/v0.4.0/MiniNotes-v0.4.0.dmg"
         sparkle:edSignature="Z080if+YGCHt7aXjLpQRRNuR2T2aiL8L/gKzpXnhXgzsngEKosbyRTsvgVb86vR3VZJWxaR1bu4dG/7wzrQTAQ=="
         sparkle:version="0.4.0"
         sparkle:shortVersionString="0.4.0"
@@ -66,7 +66,7 @@
     <!-- Previous release -->
     <item>
       <title>Version 0.3.3</title>
-      <link>https://github.com/pingfan-hu/MiniNotes/releases/tag/v0.3.3</link>
+      <link>https://github.com/alkaline-software/MiniNotes/releases/tag/v0.3.3</link>
       <sparkle:version>0.3.3</sparkle:version>
       <sparkle:shortVersionString>0.3.3</sparkle:shortVersionString>
       <description><![CDATA[
@@ -79,7 +79,7 @@
       ]]></description>
       <pubDate>Tue, 11 Aug 2026 20:23:03 +0000</pubDate>
       <enclosure
-        url="https://github.com/pingfan-hu/MiniNotes/releases/download/v0.3.3/MiniNotes-v0.3.3.dmg"
+        url="https://github.com/alkaline-software/MiniNotes/releases/download/v0.3.3/MiniNotes-v0.3.3.dmg"
         sparkle:edSignature="QKO6UeLCCkgqLgehAFnuze7Z9pm1cuaQPh8pdtzzxc1wM7QKJL8JmyZCjAov9HxdhvitCCBjfKrrR5nahh/LBw=="
         sparkle:version="0.3.3"
         sparkle:shortVersionString="0.3.3"
