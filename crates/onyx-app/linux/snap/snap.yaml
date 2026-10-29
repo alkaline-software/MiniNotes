@@ -1,0 +1,19 @@
+# snapd's metadata for the Snap Store's package. scripts/linux-snap.sh fills
+# the version and the architecture and packs it with the binary, the
+# desktop entry beside this file and the 512 px icon. Classic confinement
+# needs the store's grant; a product that runs nothing outside itself can
+# use strict confinement and the plugs it needs instead.
+name: onyx
+title: Onyx
+version: '{{VERSION}}'
+summary: A minimal desktop app to start a product from
+description: |
+  Onyx is a minimal Rust and GPUI desktop app with a window, its settings and its release pipeline, ready to be copied and renamed.
+license: MIT
+architectures: [{{ARCH}}]
+base: core24
+confinement: classic
+grade: stable
+apps:
+  onyx:
+    command: bin/Onyx

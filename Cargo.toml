@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = ["crates/onyx-core", "crates/onyx-app"]
+# The vendored crates are workspaces of their own; see each UPSTREAM.md.
+exclude = ["vendor"]
+
+[workspace.package]
+version = "0.5.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+dirs = "5"
+
+[profile.dev]
+# gpui's dependency tree is large; a little optimization keeps the window smooth in a dev build.
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+strip = true
+lto = "thin"
+
+# The toolkit is vendored: the same crates, from the same revision the git
+# dependencies name, built from vendor/ so they can be changed here. See
+# vendor/gpui-component/UPSTREAM.md.
+[patch."https://github.com/longbridge/gpui-component"]
+gpui-component = { path = "vendor/gpui-component/crates/ui" }
+gpui-base = { path = "vendor/gpui-component/crates/base" }
+gpui-component-macros = { path = "vendor/gpui-component/crates/macros" }
+gpui-component-assets = { path = "vendor/gpui-component/crates/assets" }
+
+# The Objective-C blocks crate under gpui's Mac backend, changed so a
+# future Rust still compiles it without a word (vendor/block/UPSTREAM.md).
+[patch.crates-io]
+block = { path = "vendor/block" }

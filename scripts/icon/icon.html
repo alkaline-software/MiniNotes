@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Onyx App Icon</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1280px; padding: 40px;
+    background: #f3f2f0; color: #1c1c1e;
+    font-family: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
+  }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 24px; }
+  .card {
+    background: #fff; border: 1px solid #e4e2de; border-radius: 16px;
+    padding: 36px 44px; margin-bottom: 22px;
+    display: flex; align-items: center; gap: 56px;
+  }
+  .card h2 { font-size: 18px; font-weight: 700; margin-bottom: 14px; }
+  .card p { font-size: 14px; color: #5c5c62; margin-bottom: 22px; line-height: 1.5; max-width: 760px; }
+  .sizes { display: flex; align-items: flex-end; gap: 30px; }
+  .sizes figure { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .sizes figcaption { font-size: 12px; color: #5c5c62; }
+  .sizes .gap { width: 16px; }
+  canvas { display: block; }
+  .zoom { image-rendering: pixelated; }
+  .usage { align-items: center; }
+  .usage .label { width: 300px; flex: none; }
+  .usage .label h2 { margin-bottom: 10px; }
+  .usage .label p { margin: 0; }
+  .bars { display: flex; flex-direction: column; gap: 16px; }
+  .bar { display: flex; gap: 20px; padding: 22px 24px; border-radius: 18px; }
+  .bar.dark { background: #1f2024; color: #f2f2f4; }
+  .bar.light { background: #eceae6; border: 1px solid #dcd9d3; }
+  .org { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 600; }
+  .org canvas { border-radius: 8px; }
+  .org canvas.template { border-radius: 0; margin-left: 24px; }
+  .bar.dark canvas.template { filter: invert(1); }
+</style>
+</head>
+<body>
+<h1>Onyx App Icon</h1>
+<div id="cards"></div>
+<div class="card usage">
+  <div class="label">
+    <h2>Beside its name</h2>
+    <p>Drawn at 48 px as a full square. The host rounds the corners. At the end, the subject as a template image at 18 pt, tinted as the system tints it.</p>
+  </div>
+  <div class="bars">
+    <div class="bar dark" id="bar-dark"></div>
+    <div class="bar light" id="bar-light"></div>
+  </div>
+</div>
+
+<script>
+// The icon is drawn in a 100-unit box. `bleed` fills the whole canvas as a
+// square, opaque to its corners: the .icns, since macOS masks every app icon
+// to its own rounded square and shows anything transparent as a gray border.
+// Otherwise the body is an inset squircle with a margin and a shadow: the
+// PNGs the window and the site show.
+//
+// The ground, the navy, the amber and the violet spark are the studio's and
+// the same in every icon. ACCENT is Onyx's accent, teal, at its dark shade:
+// the one place the subject has for a color of its own, the band of light
+// across the polished stone.
+const NAVY = '#2b2556', AMBER = '#ffb83e', VIOLET = '#6a3fd9', ACCENT = '#6FB9C4';
+const CREAM = '#f7eedd';
+const NAME = 'Onyx';
+
+const stroke = (ctx, pts, style, width, cap = 'round') => {
+  ctx.strokeStyle = style; ctx.lineWidth = width; ctx.lineCap = cap; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (const [x, y] of pts) ctx.lineTo(x, y);
+  ctx.stroke();
+};
+
+// A coordinate and a width, in units, moved so the stroke covers whole
+// pixels at this size. Upright and level strokes drawn through it stay
+// crisp at 32 px, where a stroke between two pixels reads as a blur.
+function snap(u, v, w) {
+  const wp = Math.max(1, Math.round(w * u));
+  return [(Math.round(v * u - wp / 2) + wp / 2) / u, wp / u];
+}
+
+// ---------------------------------------------------------------------------
+// The subject: an onyx, the black stone, with notes. The stone is the one
+// filled thing, in the navy the studio draws its lines in, so it reads as
+// black without being black; the band of light across its polish is the
+// accent. Each candidate places the stone with something a note-taker
+// knows: a page, a cairn, a cut gem, a signet, a notebook. `u` is pixels
+// per unit, so a drawing can simplify as it gets small.
+// ---------------------------------------------------------------------------
+
+// The stone: a polygon of four to six corners filled navy, its edges
+// straight, with a straight band of light across it in the accent,
+// clipped to the stone. `kind` picks the cut; `s` is its size in units
+// and `rot` its tilt.
+const STONES = {
+  penta: [[-0.95, -0.25], [-0.15, -1.0], [0.9, -0.45], [0.8, 0.65], [-0.45, 0.95]],
+  hexa: [[-1.1, -0.12], [-0.5, -0.78], [0.55, -0.78], [1.1, -0.1], [0.6, 0.78], [-0.55, 0.78]],
+  kite: [[0, -1.05], [0.78, -0.15], [0, 1.0], [-0.78, -0.15]],
+  shard: [[-1.0, -0.55], [0.95, -0.85], [0.8, 0.65], [-0.6, 0.9]],
+};
+function stonePath(ctx, kind) {
+  ctx.beginPath();
+  for (const [x, y] of STONES[kind]) ctx.lineTo(x, y);
+  ctx.closePath();
+}
+function stone(ctx, cx, cy, s, rot, kind, { band = true, bandW = 0.42, bandAt = 0.0 } = {}) {
+  ctx.save();
+  ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(s, s);
+  stonePath(ctx, kind);
+  ctx.fillStyle = NAVY; ctx.fill();
+  if (band) {
+    ctx.clip();
+    ctx.fillStyle = ACCENT;
+    ctx.beginPath();
+    ctx.moveTo(-1.8, bandAt + 0.6); ctx.lineTo(1.8, bandAt - 0.5);
+    ctx.lineTo(1.8, bandAt - 0.5 + bandW); ctx.lineTo(-1.8, bandAt + 0.6 + bandW);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+function stoneSilhouette(ctx, cx, cy, s, rot, kind) {
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(s, s);
+  stonePath(ctx, kind); ctx.restore(); ctx.fill();
+}
+function stoneCut(ctx, cx, cy, s, rot) {
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(s, s);
+  ctx.beginPath(); ctx.moveTo(-1.8, 0.6); ctx.lineTo(1.8, -0.5); ctx.lineTo(1.8, -0.1); ctx.lineTo(-1.8, 1.0); ctx.closePath();
+  ctx.restore(); ctx.fill();
+}
+
+function sheet(ctx, u, x0, y0, x1, y1, r = 3) {
+  const [sx0] = snap(u, x0, 2.6), [sx1] = snap(u, x1, 2.6);
+  const [sy0] = snap(u, y0, 2.6), [sy1] = snap(u, y1, 2.6);
+  rr(ctx, sx0, sy0, sx1 - sx0, sy1 - sy0, r);
+  ctx.fillStyle = '#ffffff'; ctx.fill();
+  ctx.strokeStyle = NAVY; ctx.lineWidth = snap(u, 0, 2.6)[1]; ctx.lineJoin = 'round'; ctx.stroke();
+  return { x0: sx0, y0: sy0, x1: sx1, y1: sy1 };
+}
+
+function writing(ctx, u, rows, w) {
+  for (const [y, xa, xb, color] of rows) {
+    const [ys, ws] = snap(u, y, w);
+    stroke(ctx, [[xa, ys], [xb, ys]], color, ws);
+  }
+}
+
+function spark(ctx, x, y, small) {
+  ctx.fillStyle = VIOLET; sparkle(ctx, x, y, small ? 6.5 : 5.5); ctx.fill();
+}
+
+// VARIANT draws the candidate in use; another number draws that one in its
+// place, in the app icon and in the template image, so candidates are
+// compared on the same page at every size. docs/design.md names the one
+// chosen and why the others lost.
+const VARIANT = 0;
+
+// A polished pebble: an ellipse filled navy, with a band of light across
+// it in the accent, straight (a cut band) or curved (a polished one),
+// clipped to the stone.
+function pebble(ctx, cx, cy, rx, ry, rot, { band = true, curved = false, bandW = 0.42, bandAt = 0.0 } = {}) {
+  ctx.save();
+  ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(rx, ry);
+  ctx.beginPath(); ctx.arc(0, 0, 1, 0, Math.PI * 2);
+  ctx.fillStyle = NAVY; ctx.fill();
+  if (band) {
+    ctx.clip();
+    ctx.fillStyle = ACCENT;
+    ctx.beginPath();
+    if (curved) {
+      ctx.moveTo(-1.3, bandAt + 0.75); ctx.quadraticCurveTo(0, bandAt - 0.55, 1.3, bandAt - 0.25);
+      ctx.lineTo(1.3, bandAt - 0.25 + bandW); ctx.quadraticCurveTo(0, bandAt - 0.55 + bandW, -1.3, bandAt + 0.75 + bandW);
+    } else {
+      ctx.moveTo(-1.5, bandAt + 0.55); ctx.lineTo(1.5, bandAt - 0.4);
+      ctx.lineTo(1.5, bandAt - 0.4 + bandW); ctx.lineTo(-1.5, bandAt + 0.55 + bandW);
+    }
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+function pebbleSilhouette(ctx, cx, cy, rx, ry, rot) {
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(rx, ry);
+  ctx.beginPath(); ctx.arc(0, 0, 1, 0, Math.PI * 2); ctx.restore(); ctx.fill();
+}
+
+// A square note turned a little, as one stuck to a desk is, with its
+// writing. `rot` tilts it about its middle; `r` rounds its corners.
+function note(ctx, u, cx, cy, size, rot, { r = 2, rows = null } = {}) {
+  ctx.save();
+  ctx.translate(cx, cy); ctx.rotate(rot); ctx.translate(-cx, -cy);
+  const half = size / 2;
+  const b = sheet(ctx, u, cx - half, cy - half, cx + half, cy + half, r);
+  if (rows) writing(ctx, u, rows.map(([dy, xa, xb, color]) => [cy + dy, cx + xa, cx + xb, color]), rows.w || 4.5);
+  ctx.restore();
+  return b;
+}
+function noteSilhouette(ctx, cx, cy, size, rot, r = 2) {
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.translate(-cx, -cy);
+  rr(ctx, cx - size / 2, cy - size / 2, size, size, r); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+function noteCut(ctx, cx, cy, rot, rows) {
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.translate(-cx, -cy);
+  for (const [dy, xa, xb] of rows) stroke(ctx, [[cx + xa, cy + dy], [cx + xb, cy + dy]], '#000', 6);
+  ctx.restore();
+}
+const LINES = (small) => small ? [[-5, -14, 14, NAVY], [7, -14, 10, AMBER]] : [[-9, -14, 16, NAVY], [1, -14, 12, AMBER], [11, -14, 8, NAVY]];
+LINES.w = (small) => small ? 6.5 : 4.5;
+function linesOf(small) { const r = LINES(small); r.w = LINES.w(small); return r; }
+
+// Each candidate is the note on the stone: a broad onyx laid down, its
+// band of light across it, and the square note set askew on top, so the
+// stone shows at the note's edges. `stone` and `note` give the two their
+// place, size and tilt; `lines` the writing; `spark` the mark.
+function onStone(ctx, u, small, { stone, note: n, spark: sp, rows = null, lines = true }) {
+  const [cx, cy, rx, ry, rot, curved, bandAt] = stone;
+  pebble(ctx, cx, cy, small ? rx * 1.04 : rx, small ? ry * 1.04 : ry, rot, { curved, bandW: small ? 0.42 : 0.36, bandAt });
+  const [nx, ny, size, nrot, r] = n;
+  note(ctx, u, nx, ny, size, nrot, { r, rows: lines ? (rows || linesOf(small)) : null });
+  if (sp) spark(ctx, sp[0], sp[1], small);
+}
+function onStoneSilhouette(ctx, { stone, note: n }) {
+  pebbleSilhouette(ctx, stone[0], stone[1], stone[2], stone[3], stone[4]);
+  noteSilhouette(ctx, n[0], n[1], n[2], n[3], n[4]);
+}
+function onStoneCut(ctx, { note: n }) {
+  noteCut(ctx, n[0], n[1], n[3], [[-9, -14, 16], [1, -14, 12]]);
+}
+function candidate(name, desc, shape, extra = {}) {
+  return {
+    name, desc,
+    subject(ctx, u, small) { onStone(ctx, u, small, { ...shape, ...(extra.subject ? extra.subject(small) : {}) }); },
+    silhouette(ctx) { onStoneSilhouette(ctx, shape); },
+    cut(ctx) { onStoneCut(ctx, shape); },
+  };
+}
+
+const CANDIDATES = [
+  candidate('A note on a stone', 'The one chosen before: a broad oval onyx laid down with a straight band of light, the note askew on it, the stone showing at the note’s edges. Three lines, the amber one in the middle, the spark at the top right.',
+    { stone: [52, 58, 32, 21, -0.12, false, 0.1], note: [46, 46, 44, -0.1, 2], spark: [82, 22] }),
+  candidate('A rounder stone', 'The stone rounder and taller, so more of it shows above and below the note, its band curved as a polished one is. The note a little smaller, the spark at the top left.',
+    { stone: [52, 54, 30, 27, -0.08, true, 0.15], note: [48, 48, 40, -0.1, 2], spark: [20, 22] }),
+  candidate('A flat stone', 'A low, wide stone, as a skipping stone is, with the note standing on it nearly upright. The band straight along the stone, the spark at the top right.',
+    { stone: [50, 66, 36, 15, -0.05, false, 0.05], note: [48, 44, 44, -0.04, 2], spark: [80, 20] }),
+  candidate('Turned the other way', 'The note turned to the right and the stone to the left, so the two cross; the band straight, the spark at the foot on the right.',
+    { stone: [50, 56, 32, 22, 0.14, false, 0.1], note: [50, 46, 44, 0.1, 2], spark: [82, 80] }),
+  candidate('The stone shows more', 'A smaller note set high on a larger stone, so the band of light runs clear under it. The spark at the top left.',
+    { stone: [52, 58, 34, 24, -0.1, false, 0.25], note: [44, 42, 38, -0.1, 2], spark: [20, 20] }),
+  candidate('A rounded note', 'The note with its corners rounded as a tumbled stone’s are, on the oval stone with a curved band. The spark at the top right.',
+    { stone: [52, 58, 32, 21, -0.12, true, 0.1], note: [46, 46, 44, -0.1, 8], spark: [82, 22] }),
+  candidate('A tall stone', 'The stone stood on end behind the note, so it shows above and below, its band across the top. The note square on it, the spark at the top right.',
+    { stone: [50, 50, 24, 33, 0.1, false, -0.6], note: [48, 54, 42, -0.08, 2], spark: [80, 18] }),
+  candidate('A larger note', 'The note nearly as wide as the stone, which shows only at two corners, its band at the lower right. The spark at the top left.',
+    { stone: [52, 58, 33, 22, -0.3, false, 0.2], note: [48, 48, 50, -0.1, 2], spark: [18, 20] }),
+  candidate('A checklist on a stone', 'The note with two boxes and a line beside each, the first ticked in amber, on the oval stone. The spark at the top right.',
+    { stone: [52, 58, 32, 21, -0.12, false, 0.1], note: [46, 46, 44, -0.1, 2], spark: [82, 22], lines: false },
+    { subject: (small) => ({ rows: null }) }),
+  candidate('A note set off the stone', 'The note set to the top left of the stone, so the stone’s band shows whole at the lower right, as the one thing beside the note. The spark at the top right.',
+    { stone: [56, 60, 32, 23, -0.12, true, 0.3], note: [40, 42, 42, -0.1, 2], spark: [82, 20] }),
+];
+// The checklist draws its boxes over its note.
+{
+  const c = CANDIDATES[8];
+  const base = c.subject;
+  c.subject = function (ctx, u, small) {
+    base.call(this, ctx, u, small);
+    const cx = 46, cy = 46;
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(-0.1); ctx.translate(-cx, -cy);
+    const box = (x, y, sz) => { ctx.strokeStyle = NAVY; ctx.lineWidth = snap(u, 0, 2.6)[1]; ctx.strokeRect(x, y, sz, sz); };
+    if (small) {
+      box(cx - 15, cy - 11, 12); stroke(ctx, [[cx - 12.5, cy - 5], [cx - 9.5, cy - 2], [cx - 4, cy - 9.5]], AMBER, 4);
+      writing(ctx, u, [[cy + 9, cx - 15, cx + 15, NAVY]], 6.5);
+    } else {
+      box(cx - 15, cy - 14, 9); box(cx - 15, cy + 2, 9);
+      stroke(ctx, [[cx - 12.8, cy - 9.5], [cx - 10.5, cy - 7.2], [cx - 6.5, cy - 12]], AMBER, 2.4);
+      writing(ctx, u, [[cy - 9.5, cx - 2, cx + 15, NAVY], [cy + 6.5, cx - 2, cx + 12, NAVY]], 4.5);
+    }
+    ctx.restore();
+  };
+  c.cut = (ctx) => { ctx.save(); ctx.translate(46, 46); ctx.rotate(-0.1); ctx.translate(-46, -46); ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.strokeRect(31, 32, 9, 9); stroke(ctx, [[44, 36.5], [61, 36.5]], '#000', 6); stroke(ctx, [[44, 52.5], [58, 52.5]], '#000', 6); ctx.restore(); };
+}
+
+const CHOSEN = CANDIDATES[VARIANT];
+
+// The subject in use, drawn on a layer `px` pixels wide that is already
+// scaled to the 100-unit box. The body of a 32 px icon with its margin is
+// 26 px across, so a body under 26 is an icon under 32 px: the small form.
+function drawSubject(ctx, px) {
+  CHOSEN.subject(ctx, px / 100, px < 26);
+}
+// ---------------------------------------------------------------------------
+
+const ICONS = [
+  {
+    id: 'onyx', name: CHOSEN.name, desc: CHOSEN.desc,
+    bg: ['#fdf8ee', '#f1e4d0'],   // top left to bottom right
+    glyph: drawSubject,
+  },
+];
+
+// four-point AI spark centered on (cx, cy)
+function sparkle(ctx, cx, cy, r) {
+  const k = r * 0.2;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r);
+  ctx.quadraticCurveTo(cx + k, cy - k, cx + r, cy);
+  ctx.quadraticCurveTo(cx + k, cy + k, cx, cy + r);
+  ctx.quadraticCurveTo(cx - k, cy + k, cx - r, cy);
+  ctx.quadraticCurveTo(cx - k, cy - k, cx, cy - r);
+  ctx.closePath();
+}
+
+function rr(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawIcon(canvas, icon, px, bleed) {
+  canvas.width = px; canvas.height = px;
+  const ctx = canvas.getContext('2d');
+  const inset = bleed ? 0 : Math.round(px * 0.09);
+  const body = px - inset * 2;
+
+  // the glyph on its own transparent layer, so gaps can be erased from it
+  const layer = document.createElement('canvas');
+  layer.width = body; layer.height = body;
+  const g = layer.getContext('2d');
+  g.scale(body / 100, body / 100);
+  icon.glyph(g, body);
+
+  ctx.save();
+  if (!bleed) {
+    ctx.translate(inset, inset); ctx.scale(body / 100, body / 100);
+    ctx.shadowColor = 'rgba(20, 16, 50, 0.28)'; ctx.shadowBlur = px * 0.045; ctx.shadowOffsetY = px * 0.022;
+    rr(ctx, 0, 0, 100, 100, 23); ctx.fillStyle = icon.bg[1]; ctx.fill();
+    ctx.shadowColor = 'transparent';
+    rr(ctx, 0, 0, 100, 100, 23); ctx.clip();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  ctx.drawImage(gradientCanvas(body, icon.bg), inset, inset);
+  ctx.drawImage(layer, inset, inset);
+  ctx.restore();
+}
+
+// Diagonal gradient computed per pixel. A canvas gradient fill is dithered by
+// the browser, and that noise makes the PNG about ten times larger.
+function gradientCanvas(size, [from, to]) {
+  const rgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  const a = rgb(from), b = rgb(to);
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const t = (x + y + 1) / (2 * size), i = (y * size + x) * 4;
+      for (let k = 0; k < 3; k++) img.data[i + k] = Math.round(a[k] + (b[k] - a[k]) * t);
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+// The subject as a template image: one black silhouette with one feature
+// cut out of it, on a transparent square, scaled to fill it. A system
+// tints it, so only its alpha counts.
+function drawTemplate(canvas, px) {
+  canvas.width = px; canvas.height = px;
+  const ctx = canvas.getContext('2d');
+  const fit = templateFit();
+  ctx.scale(px / 100, px / 100);
+  ctx.translate(50, 50); ctx.scale(fit.k, fit.k); ctx.translate(-fit.x, -fit.y);
+  ctx.fillStyle = ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+  CHOSEN.silhouette(ctx);
+  ctx.globalCompositeOperation = 'destination-out';
+  CHOSEN.cut(ctx);
+}
+
+// The silhouette's bounds, found once on a large canvas, and the scale that
+// makes it fill 94 of the 100 units.
+let FIT = null;
+function templateFit() {
+  if (FIT) return FIT;
+  const big = document.createElement('canvas'); big.width = big.height = 400;
+  const b = big.getContext('2d'); b.scale(4, 4);
+  b.fillStyle = b.strokeStyle = '#000'; b.lineWidth = 3; b.lineJoin = 'round';
+  CHOSEN.silhouette(b);
+  const d = b.getImageData(0, 0, 400, 400).data;
+  let x0 = 400, y0 = 400, x1 = 0, y1 = 0;
+  for (let y = 0; y < 400; y++) for (let x = 0; x < 400; x++) if (d[(y * 400 + x) * 4 + 3] > 8) {
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  }
+  FIT = { k: 94 / (Math.max(x1 - x0, y1 - y0) / 4), x: (x0 + x1) / 8, y: (y0 + y1) / 8 };
+  return FIT;
+}
+
+// `css` is the displayed size; `native` forces a 1:1 pixel buffer (for the zoomed proofs)
+function makeCanvas(icon, css, opts = {}) {
+  const c = document.createElement('canvas');
+  const px = opts.native || Math.round(css * (window.devicePixelRatio || 1));
+  drawIcon(c, icon, px, opts.bleed);
+  c.style.width = css + 'px'; c.style.height = css + 'px';
+  if (opts.native) c.className = 'zoom';
+  return c;
+}
+
+function fig(canvas, caption) {
+  const f = document.createElement('figure');
+  f.appendChild(canvas);
+  const cap = document.createElement('figcaption'); cap.textContent = caption;
+  f.appendChild(cap);
+  return f;
+}
+
+const cards = document.getElementById('cards');
+for (const icon of ICONS) {
+  const card = document.createElement('div'); card.className = 'card';
+  card.appendChild(makeCanvas(icon, 280));
+  const info = document.createElement('div');
+  info.innerHTML = `<h2>${icon.name}</h2><p>${icon.desc}</p>`;
+  const sizes = document.createElement('div'); sizes.className = 'sizes';
+  for (const n of [128, 64, 32, 16]) sizes.appendChild(fig(makeCanvas(icon, n), String(n)));
+  const gap = document.createElement('div'); gap.className = 'gap'; sizes.appendChild(gap);
+  sizes.appendChild(fig(makeCanvas(icon, 128, { native: 32 }), '32 px ×4'));
+  sizes.appendChild(fig(makeCanvas(icon, 64, { native: 16 }), '16 px ×4'));
+  info.appendChild(sizes);
+  card.appendChild(info);
+  cards.appendChild(card);
+}
+
+for (const id of ['bar-dark', 'bar-light']) {
+  const bar = document.getElementById(id);
+  for (const icon of ICONS) {
+    const app = document.createElement('div'); app.className = 'org';
+    app.appendChild(makeCanvas(icon, 48, { bleed: true }));
+    const t = document.createElement('span'); t.textContent = NAME;
+    app.appendChild(t);
+    const m = document.createElement('canvas'); m.className = 'template';
+    drawTemplate(m, Math.round(18 * (window.devicePixelRatio || 1)));
+    m.style.width = '18px'; m.style.height = '18px';
+    app.appendChild(m);
+    bar.appendChild(app);
+  }
+}
+
+// The template image as a data URL, 36 px (18 pt at 2x) by default.
+window.exportTemplate = (px = 36) => {
+  const c = document.createElement('canvas');
+  drawTemplate(c, px);
+  return c.toDataURL('image/png');
+};
+
+// 2048 px PNG as a data URL: the full square by default, or the squircle
+// app icon with exportIcon(2048, false)
+window.exportIcon = (px = 2048, bleed = true) => {
+  const c = document.createElement('canvas');
+  drawIcon(c, ICONS[0], px, bleed);
+  return c.toDataURL('image/png');
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,911 @@
+{
+  "About": {
+    "zh-Hans": "关于",
+    "zh-Hant": "關於",
+    "ja": "情報",
+    "ko": "정보",
+    "fr": "À propos",
+    "de": "Über",
+    "es": "Acerca de"
+  },
+  "Accent": {
+    "zh-Hans": "强调色",
+    "zh-Hant": "強調色",
+    "ja": "アクセントカラー",
+    "ko": "강조 색상",
+    "fr": "Couleur d’accentuation",
+    "de": "Akzentfarbe",
+    "es": "Color de acentuación"
+  },
+  "Amber": {
+    "zh-Hans": "琥珀",
+    "zh-Hant": "琥珀",
+    "ja": "アンバー",
+    "ko": "앰버",
+    "fr": "Ambre",
+    "de": "Bernstein",
+    "es": "Ámbar"
+  },
+  "Appearance": {
+    "zh-Hans": "外观",
+    "zh-Hant": "外觀",
+    "ja": "外観",
+    "ko": "화면 모드",
+    "fr": "Apparence",
+    "de": "Erscheinungsbild",
+    "es": "Apariencia"
+  },
+  "Bold": {
+    "zh-Hans": "粗体",
+    "zh-Hant": "粗體",
+    "ja": "太字",
+    "ko": "굵게",
+    "fr": "Gras",
+    "de": "Fett",
+    "es": "Negrita"
+  },
+  "Cancel": {
+    "zh-Hans": "取消",
+    "zh-Hant": "取消",
+    "ja": "キャンセル",
+    "ko": "취소",
+    "fr": "Annuler",
+    "de": "Abbrechen",
+    "es": "Cancelar"
+  },
+  "Check automatically": {
+    "zh-Hans": "自动检查",
+    "zh-Hant": "自動檢查",
+    "ja": "自動的に確認",
+    "ko": "자동으로 확인",
+    "fr": "Rechercher automatiquement",
+    "de": "Automatisch suchen",
+    "es": "Buscar automáticamente"
+  },
+  "Check for updates": {
+    "zh-Hans": "检查更新",
+    "zh-Hant": "檢查更新",
+    "ja": "アップデートを確認",
+    "ko": "업데이트 확인",
+    "fr": "Rechercher les mises à jour",
+    "de": "Nach Updates suchen",
+    "es": "Buscar actualizaciones"
+  },
+  "Close Vault": {
+    "zh-Hans": "关闭仓库",
+    "zh-Hant": "關閉儲存庫",
+    "ja": "保管庫を閉じる",
+    "ko": "보관소 닫기",
+    "fr": "Fermer le coffre",
+    "de": "Tresor schließen",
+    "es": "Cerrar la bóveda"
+  },
+  "Close Window": {
+    "zh-Hans": "关闭窗口",
+    "zh-Hant": "關閉視窗",
+    "ja": "ウインドウを閉じる",
+    "ko": "윈도우 닫기",
+    "fr": "Fermer la fenêtre",
+    "de": "Fenster schließen",
+    "es": "Cerrar ventana"
+  },
+  "Code": {
+    "zh-Hans": "代码",
+    "zh-Hant": "程式碼",
+    "ja": "コード",
+    "ko": "코드",
+    "fr": "Code",
+    "de": "Code",
+    "es": "Código"
+  },
+  "Copy": {
+    "zh-Hans": "拷贝",
+    "zh-Hant": "拷貝",
+    "ja": "コピー",
+    "ko": "복사",
+    "fr": "Copier",
+    "de": "Kopieren",
+    "es": "Copiar"
+  },
+  "Copy Path": {
+    "zh-Hans": "拷贝路径",
+    "zh-Hant": "拷貝路徑",
+    "ja": "パスをコピー",
+    "ko": "경로 복사",
+    "fr": "Copier le chemin",
+    "de": "Pfad kopieren",
+    "es": "Copiar la ruta"
+  },
+  "Cut": {
+    "zh-Hans": "剪切",
+    "zh-Hant": "剪下",
+    "ja": "カット",
+    "ko": "잘라내기",
+    "fr": "Couper",
+    "de": "Ausschneiden",
+    "es": "Cortar"
+  },
+  "Dark": {
+    "zh-Hans": "深色",
+    "zh-Hant": "深色",
+    "ja": "ダーク",
+    "ko": "다크",
+    "fr": "Sombre",
+    "de": "Dunkel",
+    "es": "Oscuro"
+  },
+  "Downloading… {percent}%": {
+    "zh-Hans": "正在下载… {percent}%",
+    "zh-Hant": "正在下載… {percent}%",
+    "ja": "ダウンロード中… {percent}%",
+    "ko": "다운로드 중… {percent}%",
+    "fr": "Téléchargement… {percent} %",
+    "de": "Lädt … {percent} %",
+    "es": "Descargando… {percent} %"
+  },
+  "Edit": {
+    "zh-Hans": "编辑",
+    "zh-Hant": "編輯",
+    "ja": "編集",
+    "ko": "편집",
+    "fr": "Édition",
+    "de": "Bearbeiten",
+    "es": "Edición"
+  },
+  "Editor": {
+    "zh-Hans": "编辑器",
+    "zh-Hant": "編輯器",
+    "ja": "エディタ",
+    "ko": "편집기",
+    "fr": "Éditeur",
+    "de": "Editor",
+    "es": "Editor"
+  },
+  "File": {
+    "zh-Hans": "文件",
+    "zh-Hant": "檔案",
+    "ja": "ファイル",
+    "ko": "파일",
+    "fr": "Fichier",
+    "de": "Ablage",
+    "es": "Archivo"
+  },
+  "Hide Onyx": {
+    "zh-Hans": "隐藏 Onyx",
+    "zh-Hant": "隱藏 Onyx",
+    "ja": "Onyx を非表示",
+    "ko": "Onyx 가리기",
+    "fr": "Masquer Onyx",
+    "de": "Onyx ausblenden",
+    "es": "Ocultar Onyx"
+  },
+  "Hide Others": {
+    "zh-Hans": "隐藏其他",
+    "zh-Hant": "隱藏其他",
+    "ja": "ほかを非表示",
+    "ko": "기타 가리기",
+    "fr": "Masquer les autres",
+    "de": "Andere ausblenden",
+    "es": "Ocultar otros"
+  },
+  "Inter": {
+    "zh-Hans": "Inter",
+    "zh-Hant": "Inter",
+    "ja": "Inter",
+    "ko": "Inter",
+    "fr": "Inter",
+    "de": "Inter",
+    "es": "Inter"
+  },
+  "It was not moved to the trash: {why}": {
+    "zh-Hans": "未能移到废纸篓：{why}",
+    "zh-Hant": "未能移到垃圾桶：{why}",
+    "ja": "ゴミ箱に入れられませんでした：{why}",
+    "ko": "휴지통으로 옮기지 못했습니다: {why}",
+    "fr": "Impossible de le placer dans la corbeille : {why}",
+    "de": "Es konnte nicht in den Papierkorb gelegt werden: {why}",
+    "es": "No se pudo mover a la papelera: {why}"
+  },
+  "Italic": {
+    "zh-Hans": "斜体",
+    "zh-Hant": "斜體",
+    "ja": "斜体",
+    "ko": "기울임꼴",
+    "fr": "Italique",
+    "de": "Kursiv",
+    "es": "Cursiva"
+  },
+  "Jade": {
+    "zh-Hans": "翡翠",
+    "zh-Hant": "翡翠",
+    "ja": "ジェイド",
+    "ko": "제이드",
+    "fr": "Jade",
+    "de": "Jade",
+    "es": "Jade"
+  },
+  "JetBrains Mono": {
+    "zh-Hans": "JetBrains Mono",
+    "zh-Hant": "JetBrains Mono",
+    "ja": "JetBrains Mono",
+    "ko": "JetBrains Mono",
+    "fr": "JetBrains Mono",
+    "de": "JetBrains Mono",
+    "es": "JetBrains Mono"
+  },
+  "Large": {
+    "zh-Hans": "大",
+    "zh-Hant": "大",
+    "ja": "大",
+    "ko": "크게",
+    "fr": "Grand",
+    "de": "Groß",
+    "es": "Grande"
+  },
+  "Layout": {
+    "zh-Hans": "版面",
+    "zh-Hant": "版面",
+    "ja": "レイアウト",
+    "ko": "레이아웃",
+    "fr": "Mise en page",
+    "de": "Layout",
+    "es": "Diseño"
+  },
+  "Light": {
+    "zh-Hans": "浅色",
+    "zh-Hant": "淺色",
+    "ja": "ライト",
+    "ko": "라이트",
+    "fr": "Clair",
+    "de": "Hell",
+    "es": "Claro"
+  },
+  "Lines no wider than a comfortable line of reading, centered.": {
+    "zh-Hans": "每行不宽于舒适的阅读宽度，并居中。",
+    "zh-Hant": "每行不寬於舒適的閱讀寬度，並置中。",
+    "ja": "読みやすい幅を超えない行にして、中央に置きます。",
+    "ko": "읽기 편한 너비를 넘지 않는 줄로, 가운데에 둡니다.",
+    "fr": "Des lignes pas plus larges qu’une ligne de lecture confortable, centrées.",
+    "de": "Zeilen nicht breiter als eine angenehme Lesezeile, zentriert.",
+    "es": "Líneas no más anchas que una línea de lectura cómoda, centradas."
+  },
+  "Made by {studio}.": {
+    "zh-Hans": "由 {studio} 制作。",
+    "zh-Hant": "由 {studio} 製作。",
+    "ja": "{studio} が制作しています。",
+    "ko": "{studio}이(가) 만들었습니다.",
+    "fr": "Conçu par {studio}.",
+    "de": "Gemacht von {studio}.",
+    "es": "Hecho por {studio}."
+  },
+  "Medium": {
+    "zh-Hans": "中",
+    "zh-Hant": "中",
+    "ja": "中",
+    "ko": "보통",
+    "fr": "Moyen",
+    "de": "Mittel",
+    "es": "Mediano"
+  },
+  "Minimize": {
+    "zh-Hans": "最小化",
+    "zh-Hant": "縮到最小",
+    "ja": "しまう",
+    "ko": "최소화",
+    "fr": "Placer dans le Dock",
+    "de": "Im Dock ablegen",
+    "es": "Minimizar"
+  },
+  "Moss": {
+    "zh-Hans": "苔绿",
+    "zh-Hant": "苔綠",
+    "ja": "モス",
+    "ko": "모스",
+    "fr": "Mousse",
+    "de": "Moos",
+    "es": "Musgo"
+  },
+  "Move to Trash": {
+    "zh-Hans": "移到废纸篓",
+    "zh-Hant": "移到垃圾桶",
+    "ja": "ゴミ箱に入れる",
+    "ko": "휴지통으로 이동",
+    "fr": "Placer dans la corbeille",
+    "de": "In den Papierkorb legen",
+    "es": "Mover a la papelera"
+  },
+  "New Folder": {
+    "zh-Hans": "新建文件夹",
+    "zh-Hant": "新增檔案夾",
+    "ja": "新規フォルダ",
+    "ko": "새로운 폴더",
+    "fr": "Nouveau dossier",
+    "de": "Neuer Ordner",
+    "es": "Nueva carpeta"
+  },
+  "New folder": {
+    "zh-Hans": "新建文件夹",
+    "zh-Hant": "新增檔案夾",
+    "ja": "新規フォルダ",
+    "ko": "새로운 폴더",
+    "fr": "Nouveau dossier",
+    "de": "Neuer Ordner",
+    "es": "Nueva carpeta"
+  },
+  "New Note": {
+    "zh-Hans": "新建笔记",
+    "zh-Hant": "新增筆記",
+    "ja": "新規ノート",
+    "ko": "새로운 노트",
+    "fr": "Nouvelle note",
+    "de": "Neue Notiz",
+    "es": "Nueva nota"
+  },
+  "New Note (⌘N)": {
+    "zh-Hans": "新建笔记 (⌘N)",
+    "zh-Hant": "新增筆記 (⌘N)",
+    "ja": "新規ノート (⌘N)",
+    "ko": "새로운 노트 (⌘N)",
+    "fr": "Nouvelle note (⌘N)",
+    "de": "Neue Notiz (⌘N)",
+    "es": "Nueva nota (⌘N)"
+  },
+  "No note is open.": {
+    "zh-Hans": "没有打开的笔记。",
+    "zh-Hant": "沒有打開的筆記。",
+    "ja": "開いているノートはありません。",
+    "ko": "열린 노트가 없습니다.",
+    "fr": "Aucune note n’est ouverte.",
+    "de": "Keine Notiz ist geöffnet.",
+    "es": "No hay ninguna nota abierta."
+  },
+  "No notes yet. Make one with the button above.": {
+    "zh-Hans": "还没有笔记。用上面的按钮新建一条。",
+    "zh-Hant": "還沒有筆記。用上面的按鈕新增一則。",
+    "ja": "まだノートがありません。上のボタンで作れます。",
+    "ko": "아직 노트가 없습니다. 위의 버튼으로 만들 수 있습니다.",
+    "fr": "Pas encore de note. Créez-en une avec le bouton ci-dessus.",
+    "de": "Noch keine Notizen. Mit der Taste oben eine anlegen.",
+    "es": "Aún no hay notas. Crea una con el botón de arriba."
+  },
+  "No vault": {
+    "zh-Hans": "没有仓库",
+    "zh-Hant": "沒有儲存庫",
+    "ja": "保管庫なし",
+    "ko": "보관소 없음",
+    "fr": "Aucun coffre",
+    "de": "Kein Tresor",
+    "es": "Sin bóveda"
+  },
+  "Notes live in a folder of your own, a vault, as plain markdown files.": {
+    "zh-Hans": "笔记以纯 Markdown 文件存放在你自己的文件夹里，也就是仓库。",
+    "zh-Hant": "筆記以純 Markdown 檔案存放在你自己的檔案夾裡，也就是儲存庫。",
+    "ja": "ノートはあなた自身のフォルダ、保管庫に、プレーンな Markdown ファイルとして置かれます。",
+    "ko": "노트는 보관소라는 자신의 폴더에 일반 Markdown 파일로 저장됩니다.",
+    "fr": "Les notes vivent dans un dossier à vous, un coffre, sous forme de simples fichiers Markdown.",
+    "de": "Notizen liegen in einem eigenen Ordner, einem Tresor, als einfache Markdown-Dateien.",
+    "es": "Las notas viven en una carpeta tuya, una bóveda, como simples archivos Markdown."
+  },
+  "Open": {
+    "zh-Hans": "打开",
+    "zh-Hant": "打開",
+    "ja": "開く",
+    "ko": "열기",
+    "fr": "Ouvrir",
+    "de": "Öffnen",
+    "es": "Abrir"
+  },
+  "Open a vault…": {
+    "zh-Hans": "打开一个仓库…",
+    "zh-Hant": "打開一個儲存庫…",
+    "ja": "保管庫を開く…",
+    "ko": "보관소 열기…",
+    "fr": "Ouvrir un coffre…",
+    "de": "Einen Tresor öffnen…",
+    "es": "Abrir una bóveda…"
+  },
+  "Open Vault…": {
+    "zh-Hans": "打开仓库…",
+    "zh-Hant": "打開儲存庫…",
+    "ja": "保管庫を開く…",
+    "ko": "보관소 열기…",
+    "fr": "Ouvrir un coffre…",
+    "de": "Tresor öffnen…",
+    "es": "Abrir una bóveda…"
+  },
+  "Orchid": {
+    "zh-Hans": "兰花紫",
+    "zh-Hant": "蘭花紫",
+    "ja": "オーキッド",
+    "ko": "오키드",
+    "fr": "Orchidée",
+    "de": "Orchidee",
+    "es": "Orquídea"
+  },
+  "Paste": {
+    "zh-Hans": "粘贴",
+    "zh-Hant": "貼上",
+    "ja": "ペースト",
+    "ko": "붙여넣기",
+    "fr": "Coller",
+    "de": "Einsetzen",
+    "es": "Pegar"
+  },
+  "Periwinkle": {
+    "zh-Hans": "长春花蓝",
+    "zh-Hant": "長春花藍",
+    "ja": "ペリウィンクル",
+    "ko": "페리윙클",
+    "fr": "Pervenche",
+    "de": "Immergrün",
+    "es": "Pervinca"
+  },
+  "Quit Onyx": {
+    "zh-Hans": "退出 Onyx",
+    "zh-Hant": "結束 Onyx",
+    "ja": "Onyx を終了",
+    "ko": "Onyx 종료",
+    "fr": "Quitter Onyx",
+    "de": "Onyx beenden",
+    "es": "Salir de Onyx"
+  },
+  "Read": {
+    "zh-Hans": "阅读",
+    "zh-Hant": "閱讀",
+    "ja": "閲覧",
+    "ko": "읽기",
+    "fr": "Lire",
+    "de": "Lesen",
+    "es": "Leer"
+  },
+  "Readable line length": {
+    "zh-Hans": "易读的行宽",
+    "zh-Hant": "易讀的行寬",
+    "ja": "読みやすい行幅",
+    "ko": "읽기 편한 줄 너비",
+    "fr": "Longueur de ligne lisible",
+    "de": "Lesbare Zeilenlänge",
+    "es": "Ancho de línea legible"
+  },
+  "Recent": {
+    "zh-Hans": "最近",
+    "zh-Hant": "最近",
+    "ja": "最近",
+    "ko": "최근",
+    "fr": "Récents",
+    "de": "Zuletzt",
+    "es": "Recientes"
+  },
+  "Redo": {
+    "zh-Hans": "重做",
+    "zh-Hant": "重做",
+    "ja": "やり直す",
+    "ko": "실행 복귀",
+    "fr": "Rétablir",
+    "de": "Wiederholen",
+    "es": "Rehacer"
+  },
+  "Release Notes": {
+    "zh-Hans": "更新说明",
+    "zh-Hant": "更新說明",
+    "ja": "リリースノート",
+    "ko": "릴리스 노트",
+    "fr": "Notes de version",
+    "de": "Versionshinweise",
+    "es": "Notas de la versión"
+  },
+  "Rename": {
+    "zh-Hans": "重命名",
+    "zh-Hant": "重新命名",
+    "ja": "名前を変更",
+    "ko": "이름 변경",
+    "fr": "Renommer",
+    "de": "Umbenennen",
+    "es": "Renombrar"
+  },
+  "Rename Folder": {
+    "zh-Hans": "重命名文件夹",
+    "zh-Hant": "重新命名檔案夾",
+    "ja": "フォルダの名前を変更",
+    "ko": "폴더 이름 변경",
+    "fr": "Renommer le dossier",
+    "de": "Ordner umbenennen",
+    "es": "Renombrar la carpeta"
+  },
+  "Rename Note": {
+    "zh-Hans": "重命名笔记",
+    "zh-Hant": "重新命名筆記",
+    "ja": "ノートの名前を変更",
+    "ko": "노트 이름 변경",
+    "fr": "Renommer la note",
+    "de": "Notiz umbenennen",
+    "es": "Renombrar la nota"
+  },
+  "Rename…": {
+    "zh-Hans": "重命名…",
+    "zh-Hant": "重新命名…",
+    "ja": "名称変更…",
+    "ko": "이름 변경…",
+    "fr": "Renommer…",
+    "de": "Umbenennen …",
+    "es": "Renombrar…"
+  },
+  "Reveal in Finder": {
+    "zh-Hans": "在访达中显示",
+    "zh-Hant": "在 Finder 中顯示",
+    "ja": "Finder に表示",
+    "ko": "Finder에서 보기",
+    "fr": "Afficher dans le Finder",
+    "de": "Im Finder zeigen",
+    "es": "Mostrar en el Finder"
+  },
+  "Rose": {
+    "zh-Hans": "玫瑰",
+    "zh-Hant": "玫瑰",
+    "ja": "ローズ",
+    "ko": "로즈",
+    "fr": "Rose",
+    "de": "Rosé",
+    "es": "Rosa"
+  },
+  "Save": {
+    "zh-Hans": "存储",
+    "zh-Hant": "儲存",
+    "ja": "保存",
+    "ko": "저장",
+    "fr": "Enregistrer",
+    "de": "Sichern",
+    "es": "Guardar"
+  },
+  "Select All": {
+    "zh-Hans": "全选",
+    "zh-Hant": "全選",
+    "ja": "すべてを選択",
+    "ko": "전체 선택",
+    "fr": "Tout sélectionner",
+    "de": "Alles auswählen",
+    "es": "Seleccionar todo"
+  },
+  "Settings": {
+    "zh-Hans": "设置",
+    "zh-Hant": "設定",
+    "ja": "設定",
+    "ko": "설정",
+    "fr": "Réglages",
+    "de": "Einstellungen",
+    "es": "Ajustes"
+  },
+  "Settings (⌘,)": {
+    "zh-Hans": "设置 (⌘,)",
+    "zh-Hant": "設定 (⌘,)",
+    "ja": "設定 (⌘,)",
+    "ko": "설정 (⌘,)",
+    "fr": "Réglages (⌘,)",
+    "de": "Einstellungen (⌘,)",
+    "es": "Ajustes (⌘,)"
+  },
+  "Settings…": {
+    "zh-Hans": "设置…",
+    "zh-Hant": "設定…",
+    "ja": "設定…",
+    "ko": "설정…",
+    "fr": "Réglages…",
+    "de": "Einstellungen …",
+    "es": "Ajustes…"
+  },
+  "Show All": {
+    "zh-Hans": "全部显示",
+    "zh-Hant": "顯示全部",
+    "ja": "すべてを表示",
+    "ko": "모두 보기",
+    "fr": "Tout afficher",
+    "de": "Alle einblenden",
+    "es": "Mostrar todo"
+  },
+  "Show in Explorer": {
+    "zh-Hans": "在资源管理器中显示",
+    "zh-Hant": "在檔案總管中顯示",
+    "ja": "エクスプローラーで表示",
+    "ko": "탐색기에서 보기",
+    "fr": "Afficher dans l’Explorateur",
+    "de": "Im Explorer anzeigen",
+    "es": "Mostrar en el Explorador"
+  },
+  "Show in folder": {
+    "zh-Hans": "在文件夹中显示",
+    "zh-Hant": "在資料夾中顯示",
+    "ja": "フォルダで表示",
+    "ko": "폴더에서 보기",
+    "fr": "Afficher dans le dossier",
+    "de": "Im Ordner anzeigen",
+    "es": "Mostrar en la carpeta"
+  },
+  "Sidebar": {
+    "zh-Hans": "边栏",
+    "zh-Hant": "側邊欄",
+    "ja": "サイドバー",
+    "ko": "사이드바",
+    "fr": "Barre latérale",
+    "de": "Seitenleiste",
+    "es": "Barra lateral"
+  },
+  "Sidebar (⌘⇧B)": {
+    "zh-Hans": "边栏 (⌘⇧B)",
+    "zh-Hant": "側邊欄 (⌘⇧B)",
+    "ja": "サイドバー (⌘⇧B)",
+    "ko": "사이드바 (⌘⇧B)",
+    "fr": "Barre latérale (⌘⇧B)",
+    "de": "Seitenleiste (⌘⇧B)",
+    "es": "Barra lateral (⌘⇧B)"
+  },
+  "Small": {
+    "zh-Hans": "小",
+    "zh-Hant": "小",
+    "ja": "小",
+    "ko": "작게",
+    "fr": "Petit",
+    "de": "Klein",
+    "es": "Pequeño"
+  },
+  "Source": {
+    "zh-Hans": "源代码",
+    "zh-Hant": "原始碼",
+    "ja": "ソース",
+    "ko": "소스",
+    "fr": "Source",
+    "de": "Quelltext",
+    "es": "Código fuente"
+  },
+  "Source Serif": {
+    "zh-Hans": "Source Serif",
+    "zh-Hant": "Source Serif",
+    "ja": "Source Serif",
+    "ko": "Source Serif",
+    "fr": "Source Serif",
+    "de": "Source Serif",
+    "es": "Source Serif"
+  },
+  "System": {
+    "zh-Hans": "跟随系统",
+    "zh-Hant": "跟隨系統",
+    "ja": "システム",
+    "ko": "시스템",
+    "fr": "Système",
+    "de": "System",
+    "es": "Sistema"
+  },
+  "System Mono": {
+    "zh-Hans": "系统等宽",
+    "zh-Hant": "系統等寬",
+    "ja": "システム等幅",
+    "ko": "시스템 고정폭",
+    "fr": "Mono du système",
+    "de": "System-Mono",
+    "es": "Mono del sistema"
+  },
+  "Teal": {
+    "zh-Hans": "青绿",
+    "zh-Hant": "青綠",
+    "ja": "ティール",
+    "ko": "틸",
+    "fr": "Bleu canard",
+    "de": "Petrol",
+    "es": "Verde azulado"
+  },
+  "Text": {
+    "zh-Hans": "正文",
+    "zh-Hant": "正文",
+    "ja": "本文",
+    "ko": "본문",
+    "fr": "Texte",
+    "de": "Text",
+    "es": "Texto"
+  },
+  "Text size": {
+    "zh-Hans": "文字大小",
+    "zh-Hant": "文字大小",
+    "ja": "文字サイズ",
+    "ko": "글자 크기",
+    "fr": "Taille du texte",
+    "de": "Textgröße",
+    "es": "Tamaño del texto"
+  },
+  "The check did not go through: {why}": {
+    "zh-Hans": "检查未完成：{why}",
+    "zh-Hant": "檢查未完成：{why}",
+    "ja": "確認できませんでした：{why}",
+    "ko": "확인하지 못했습니다: {why}",
+    "fr": "La vérification a échoué : {why}",
+    "de": "Die Prüfung ist fehlgeschlagen: {why}",
+    "es": "La comprobación no se completó: {why}"
+  },
+  "The folder could not be made: {why}": {
+    "zh-Hans": "无法新建文件夹：{why}",
+    "zh-Hant": "無法新增檔案夾：{why}",
+    "ja": "フォルダを作れませんでした：{why}",
+    "ko": "폴더를 만들 수 없습니다: {why}",
+    "fr": "Le dossier n’a pas pu être créé : {why}",
+    "de": "Der Ordner konnte nicht angelegt werden: {why}",
+    "es": "No se pudo crear la carpeta: {why}"
+  },
+  "The name was not changed: {why}": {
+    "zh-Hans": "名称未更改：{why}",
+    "zh-Hant": "名稱未更改：{why}",
+    "ja": "名前は変更されませんでした：{why}",
+    "ko": "이름이 바뀌지 않았습니다: {why}",
+    "fr": "Le nom n’a pas été changé : {why}",
+    "de": "Der Name wurde nicht geändert: {why}",
+    "es": "El nombre no se cambió: {why}"
+  },
+  "The note could not be made: {why}": {
+    "zh-Hans": "无法新建笔记：{why}",
+    "zh-Hant": "無法新增筆記：{why}",
+    "ja": "ノートを作れませんでした：{why}",
+    "ko": "노트를 만들 수 없습니다: {why}",
+    "fr": "La note n’a pas pu être créée : {why}",
+    "de": "Die Notiz konnte nicht angelegt werden: {why}",
+    "es": "No se pudo crear la nota: {why}"
+  },
+  "The note could not be read: {why}": {
+    "zh-Hans": "无法读取笔记：{why}",
+    "zh-Hant": "無法讀取筆記：{why}",
+    "ja": "ノートを読めませんでした：{why}",
+    "ko": "노트를 읽을 수 없습니다: {why}",
+    "fr": "La note n’a pas pu être lue : {why}",
+    "de": "Die Notiz konnte nicht gelesen werden: {why}",
+    "es": "No se pudo leer la nota: {why}"
+  },
+  "The note could not be written: {why}": {
+    "zh-Hans": "无法写入笔记：{why}",
+    "zh-Hant": "無法寫入筆記：{why}",
+    "ja": "ノートを書き込めませんでした：{why}",
+    "ko": "노트를 쓸 수 없습니다: {why}",
+    "fr": "La note n’a pas pu être écrite : {why}",
+    "de": "Die Notiz konnte nicht geschrieben werden: {why}",
+    "es": "No se pudo escribir la nota: {why}"
+  },
+  "The update did not go through: {e}": {
+    "zh-Hans": "更新未完成：{e}",
+    "zh-Hant": "更新未完成：{e}",
+    "ja": "アップデートできませんでした：{e}",
+    "ko": "업데이트하지 못했습니다: {e}",
+    "fr": "La mise à jour a échoué : {e}",
+    "de": "Das Update ist fehlgeschlagen: {e}",
+    "es": "La actualización no se completó: {e}"
+  },
+  "The vault is not being watched: {why}": {
+    "zh-Hans": "无法监视仓库：{why}",
+    "zh-Hant": "無法監看儲存庫：{why}",
+    "ja": "保管庫を監視できません：{why}",
+    "ko": "보관소를 감시할 수 없습니다: {why}",
+    "fr": "Le coffre n’est pas surveillé : {why}",
+    "de": "Der Tresor wird nicht überwacht: {why}",
+    "es": "La bóveda no se está vigilando: {why}"
+  },
+  "Toggle Full Screen": {
+    "zh-Hans": "进入或退出全屏幕",
+    "zh-Hant": "進入或結束全螢幕",
+    "ja": "フルスクリーンにする/解除",
+    "ko": "전체 화면 켜기/끄기",
+    "fr": "Activer ou quitter le mode plein écran",
+    "de": "Vollbild ein- oder ausschalten",
+    "es": "Activar o salir de pantalla completa"
+  },
+  "Toggle Sidebar": {
+    "zh-Hans": "显示或隐藏边栏",
+    "zh-Hant": "顯示或隱藏側邊欄",
+    "ja": "サイドバーの表示/非表示",
+    "ko": "사이드바 보기/가리기",
+    "fr": "Afficher ou masquer la barre latérale",
+    "de": "Seitenleiste ein- oder ausblenden",
+    "es": "Mostrar u ocultar la barra lateral"
+  },
+  "Toggle Task": {
+    "zh-Hans": "切换任务",
+    "zh-Hant": "切換任務",
+    "ja": "タスクを切り替え",
+    "ko": "작업 전환",
+    "fr": "Basculer la tâche",
+    "de": "Aufgabe umschalten",
+    "es": "Alternar tarea"
+  },
+  "Undo": {
+    "zh-Hans": "撤销",
+    "zh-Hant": "撤銷",
+    "ja": "取り消す",
+    "ko": "실행 취소",
+    "fr": "Annuler",
+    "de": "Widerrufen",
+    "es": "Deshacer"
+  },
+  "Untitled": {
+    "zh-Hans": "未命名",
+    "zh-Hant": "未命名",
+    "ja": "名称未設定",
+    "ko": "제목 없음",
+    "fr": "Sans titre",
+    "de": "Ohne Titel",
+    "es": "Sin título"
+  },
+  "Up to date.": {
+    "zh-Hans": "已是最新版本。",
+    "zh-Hant": "已是最新版本。",
+    "ja": "最新です。",
+    "ko": "최신 버전입니다.",
+    "fr": "À jour.",
+    "de": "Auf dem neuesten Stand.",
+    "es": "Está al día."
+  },
+  "Update to {version}": {
+    "zh-Hans": "更新到 {version}",
+    "zh-Hant": "更新到 {version}",
+    "ja": "{version} にアップデート",
+    "ko": "{version}(으)로 업데이트",
+    "fr": "Passer à la {version}",
+    "de": "Auf {version} aktualisieren",
+    "es": "Actualizar a {version}"
+  },
+  "Updates": {
+    "zh-Hans": "更新",
+    "zh-Hant": "更新",
+    "ja": "アップデート",
+    "ko": "업데이트",
+    "fr": "Mises à jour",
+    "de": "Updates",
+    "es": "Actualizaciones"
+  },
+  "Version {version}": {
+    "zh-Hans": "版本 {version}",
+    "zh-Hant": "版本 {version}",
+    "ja": "バージョン {version}",
+    "ko": "버전 {version}",
+    "fr": "Version {version}",
+    "de": "Version {version}",
+    "es": "Versión {version}"
+  },
+  "View": {
+    "zh-Hans": "显示",
+    "zh-Hant": "顯示方式",
+    "ja": "表示",
+    "ko": "보기",
+    "fr": "Présentation",
+    "de": "Darstellung",
+    "es": "Visualización"
+  },
+  "Window": {
+    "zh-Hans": "窗口",
+    "zh-Hant": "視窗",
+    "ja": "ウインドウ",
+    "ko": "윈도우",
+    "fr": "Fenêtre",
+    "de": "Fenster",
+    "es": "Ventana"
+  },
+  "Zoom": {
+    "zh-Hans": "缩放",
+    "zh-Hant": "縮放",
+    "ja": "拡大/縮小",
+    "ko": "확대/축소",
+    "fr": "Réduire/agrandir",
+    "de": "Zoomen",
+    "es": "Zoom"
+  },
+  "{studio} presents": {
+    "zh-Hans": "{studio} 出品",
+    "zh-Hant": "{studio} 出品",
+    "ja": "{studio} 提供",
+    "ko": "{studio} 제공",
+    "fr": "{studio} présente",
+    "de": "{studio} präsentiert",
+    "es": "{studio} presenta"
+  },
+  "↩ to rename, Esc to cancel": {
+    "zh-Hans": "按 ↩ 重命名，按 Esc 取消",
+    "zh-Hant": "按 ↩ 重新命名，按 Esc 取消",
+    "ja": "↩ で名前を変更、Esc で取り消し",
+    "ko": "↩로 이름 변경, Esc로 취소",
+    "fr": "↩ pour renommer, Échap pour annuler",
+    "de": "↩ zum Umbenennen, Esc zum Abbrechen",
+    "es": "↩ para renombrar, Esc para cancelar"
+  }
+}

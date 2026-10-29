@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Onyx
+Comment=A minimal desktop app to start a product from.
+Exec=onyx
+Icon=${SNAP}/meta/gui/icon.png
+StartupWMClass=Onyx
+Categories=Development;
+Terminal=false

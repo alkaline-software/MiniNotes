@@ -1,135 +1,109 @@
 # AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## What this is
 
-## What This Is
+**Onyx** is a note-taking app: a folder of plain markdown files, a vault, shown in a sidebar, and a note drawn as it reads while you write it, as Obsidian's live preview does. Rust and GPUI, for macOS, Windows and Linux, built to the Alkaline Software constitution; it took the place of MiniNotes, a Swift menu bar app, at v0.5.0.
 
-MiniNotes is a macOS menu bar app (no Dock icon; `LSUIElement = true`) with a live-preview Markdown editor. The UI is a SwiftUI/AppKit popover wrapping a WKWebView that runs a CodeMirror 6 editor bundled from JavaScript.
+## The one idea
 
-## Current Version
+**The file is the note.** Onyx keeps nothing of its own about a note: no database, no index, no copy. The sidebar is the folder as the disk has it, the editor holds the file's text exactly, and a note is written whole a moment after the last keystroke and before it is left. Another app may write the same folder, and Onyx follows (`docs/window.md`, The vault). This is why a vault made elsewhere opens as it is, and why nothing is lost when Onyx is not running.
 
-**v0.4.1** — update `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml` (both must match) when releasing a new version, then run `xcodegen generate`.
+## The standard
 
-## Build Commands
+Onyx is held to the bar of the work that wins Awwwards, the Webbys and the FWA (`docs/design.md`; read it before changing anything a person sees): minimal, calm, intuitive, finished in every state. Every change meets it unasked.
 
-### JS Editor Bundle (required after any change to `build/src/editor.js` or `editor.html`)
+- **Nothing jumps.** What appears, goes, opens, closes, grows or moves does so over a moment, with the pattern its neighbors use (`widgets.rs`, `menu.rs`, `shell.rs`). No pause at the end of a motion.
+- **Words are few.** A row's name says what it is; a line under it only where the name does not say it all.
+- **Look before saying it is done:** in both appearances, in a long language, and in a narrow window (`docs/probing.md`).
 
-```bash
-cd build && npm run build
+## Rules that hold everywhere
+
+Each is here because breaking it loses data or brings back a fixed bug. The doc named has the story.
+
+- **A note is written whole, through `onyx_core::vault::write`**, a temp file and a rename, never in place and never in part. (`docs/window.md`)
+- **A note that has changes is never replaced by what the disk holds.** The disk's text goes in only while nothing is unsaved. (`docs/window.md`)
+- **Nothing goes straight off the disk.** A note or a folder deleted goes to the system's trash (`vault::trash`). (`docs/window.md`)
+- **The editor never slices a line at a byte that is not a character's boundary**, and the caret steps by grapheme (`lines::Doc`). (`docs/editor.md`)
+- **Typed text arrives through gpui's input handler, never through a key binding**, so an input method composes in place. Keys that move or change are actions. (`docs/editor.md`)
+- **A change made in many places at once is one step of undo** (`Doc::replace_many`): a list renumbered after Enter is not ten steps. (`docs/editor.md`)
+- **A motion that repeats runs on the window's clock** (`ambient::phase`), never `Animation::repeat`.
+- **Every scroller that goes up and down names itself** to the router as it is drawn (`Scrollers::name`), or a flick in it scrolls whatever the pointer reaches next.
+- **A button is `choice_pill`**, a pill with an icon before its word. The toolkit's `Button` is only for an icon alone.
+- **Every word the window shows goes through `i18n::t`** and is in `locales/words.json` in every language; `cargo test -p onyx-app` fails otherwise.
+- **A key is drawn on caps** through `key_text`, `kbd_hint` or `tip`, named as the Mac has it and bound as `secondary-<key>`.
+- **Every child process starts through `onyx_core::process::command`**, never `Command::new`.
+- **Per-system calls live in `sys.rs`**, each with a body for every system. (`docs/platform.md`)
+- **One copy of gpui.** The pin is in `Cargo.lock`. Changes to the toolkit go in `vendor/gpui-component/`, marked `(Studio addition.)` and listed in its `UPSTREAM.md`. Build from the root, never inside `vendor/`.
+
+## Before you edit, read
+
+| You are about to touch | Read first |
+|---|---|
+| `editor.rs`, `lines.rs`, `markdown.rs`: the live preview, the caret, the keys, the modes | `docs/editor.md` |
+| `shell.rs`, `ui_state.rs`, `main.rs`: the sidebar, the vault, a note's life, the strip, the landing page, the menus; `onyx-core/src/vault.rs` | `docs/window.md` |
+| `settings.rs`, `look.rs`, `fonts.rs`, `assets.rs`, `themes/onyx.json`, `scripts/icon/`; anything a person sees, new or changed | `docs/design.md`, then the doc of the part it is in |
+| `sys.rs`, `csd.rs`, `update.rs`, `process.rs`, `vendor/`, `Cargo.toml`, `.github/workflows/`, any `cfg` for an OS | `docs/platform.md` |
+| Checking a change in the window from a script | `docs/probing.md` |
+| Bumping the version and cutting a release | `docs/release.md` |
+
+## Layout
+
+```
+Cargo.toml                 the workspace and the one version
+crates/onyx-core/          everything without a window
+  src/vault.rs               the folder of notes: the tree, new, rename, trash, wikilinks, the watcher
+  src/config.rs              the settings file
+  src/paths.rs               ~/.onyx, overridden by ONYX_HOME; atomic writes
+  src/update.rs              the newest release and its installer
+  src/process.rs             every child process, with no console window on Windows
+  src/bin/onyx-core.rs       paths | config | update | vault <folder> [new <name>]
+  tests/core.rs
+crates/onyx-app/           the window
+  src/main.rs                menus, key bindings, the main window, the probe's variables
+  src/shell.rs               the frame, the sidebar (the vault's tree), the strip, the landing page, a note's life
+  src/editor.rs              the live-preview editor: layout, paint, the caret, the keys, the input method
+  src/lines.rs               a note's text as lines: places, graphemes, edits, undo
+  src/markdown.rs            what each line is and every inline span with its marks
+  src/settings.rs            the settings window: Appearance, Editor, About
+  src/widgets.rs             the shared drawing: choice_pill, key_text, tip, page_in, Motion
+  src/menu.rs                the app's own menu, in and out in motion
+  src/scroll.rs              a gesture stays in the scroller it began in
+  src/ambient.rs             the window's clock
+  src/look.rs                appearance, accents, code's inks
+  src/fonts.rs               the faces carried, and which each place uses
+  src/assets.rs              the icons and pictures built in
+  src/file_icons.rs          Catppuccin's file icons for the tree
+  src/i18n.rs                the window's words in eight languages
+  src/sys.rs                 per-system calls
+  src/csd.rs                 the window's own buttons where the system draws none
+  src/ui_state.rs            what the window remembers: bounds, sidebar, vault, note, mode, recent vaults
+  assets/ themes/ locales/   icons, fonts, the app icon; the palette; the words
+  macos/ windows/ linux/     what each system's package needs
+vendor/                    the toolkit and the blocks crate, each with an UPSTREAM.md
+scripts/                   the dev build, the icon, the release
+docs/                      how each part works and its traps; release.md; probing.md
 ```
 
-This bundles and minifies `build/src/editor.js` into `MiniNotes/Resources/editor-bundle.js` using esbuild. The Swift app reads this file at runtime and inlines it into the HTML.
+## Running it
 
-### macOS App (CLI build + relaunch — preferred; do this after every change session)
-
-```bash
-xcodebuild -project MiniNotes.xcodeproj -scheme MiniNotes -configuration Release build
-killall MiniNotes 2>/dev/null; sleep 1
-ditto ~/Library/Developer/Xcode/DerivedData/MiniNotes-dqmwdyrthfgyezeddoegrwdqawje/Build/Products/Release/MiniNotes.app /Applications/MiniNotes.app
-rm -rf ~/Library/Developer/Xcode/DerivedData/MiniNotes-dqmwdyrthfgyezeddoegrwdqawje/Build/Products/Release/MiniNotes.app
-open /Applications/MiniNotes.app
+```
+cargo test -p onyx-core -p onyx-app
+cargo build -p onyx-app && scripts/dev-app.sh
 ```
 
-The user does not use Xcode for day-to-day testing — always rebuild and relaunch the app this way when a session's changes are done. Install to `/Applications` and delete the DerivedData copy so the app never appears twice in Spotlight; the next build recreates the DerivedData app.
+One dev build at a time: two copies share `~/.onyx` and both write what the window remembers. After a change to the app, build it and run `scripts/relaunch.sh` as the last command, without being asked; a change to documents alone needs no relaunch. Probe a change with a copy of its own first (`docs/probing.md`), never the copy the person is writing in.
 
-### Regenerate Xcode project (required after any change to `project.yml`)
+## Writing things down
 
-```bash
-xcodegen generate
+- How a part works, a trap, or a fact learned about gpui or the toolkit goes in that part's doc under `docs/`, in its `## Rules` when breaking it loses data or brings back a bug.
+- This file gets a line only for a rule every session follows whatever it works on, or a row in the table above. Keep it under 300 lines.
+- Write what is so now and why, in plain words, with no hard wraps, American spelling and no em dashes (the constitution's `docs/docs.md`). An approach tried and dropped gets one sentence, where someone might try it again. What was checked and how belongs in the reply to the person, not in a doc.
+
+## Testing
+
+```
+cargo test -p onyx-core
+cargo test -p onyx-app
 ```
 
-## Architecture
-
-### Startup flow
-
-`MiniNotesApp` (SwiftUI `@main`) -> `AppDelegate` -> `StatusBarController`
-
-`StatusBarController` owns:
-- `NSStatusItem` (menu bar icon: custom-drawn template badge — outlined 22x16pt rounded rect with a solid pen, inverting to a filled badge while the popover is open — matching the system input-method icon; drawn in `makeStatusIcon(active:)`; `autosaveName` "MiniNotes")
-- `NSPopover` (620x500, `.applicationDefined` behavior)
-- `NotesStore` (single source of truth for note content and app state)
-- `EventMonitor` (closes popover on outside clicks)
-- Global hotkey registration via `HotkeyManager` (default ⌃⌥⌘N, customizable in Settings)
-
-**Status item self-healing**: menu bar managers (Ice, Hidden Bar) hide items by pushing them off-screen, and macOS persists that position in the app's own defaults (`NSStatusItem Preferred Position MiniNotes`), so the icon can stay invisible across relaunches. `healStatusItemIfNeeded()` detects an off-screen button window and recreates the item at a known-visible position. It runs 2s after launch, on app reopen, and before every popover open.
-
-`AppDelegate` also owns the Sparkle `SPUStandardUpdaterController` (auto-update; see Release section).
-
-### View state machine
-
-`ContentView` switches between two root views based on `NotesStore.isFileOpen`:
-
-- **`LandingView`** — shown on fresh start (no previously stored file) or after clicking the exit button. Lets the user open an existing `.md` file, create a new one, or reopen the most recently closed file.
-- **Editor view** — toolbar (`pin | filename … [source|edit|view] … Open in Obsidian | exit`) + `MarkdownEditorView` (WKWebView). Editor modes switch with Cmd+1/2/3. "Open in Obsidian" launches `obsidian://open?path=` on the same file on disk (no copying; the file must live inside a vault Obsidian knows, though not necessarily the currently open one).
-
-Clicking the exit button calls `NotesStore.closeFile()`: flushes to disk, records `recentFileURL`, sets `isFileOpen = false`.
-Picking a file from `LandingView` calls `NotesStore.changeFile(to:)`: loads content, sets `isFileOpen = true`.
-
-### Editor bridge (Swift <-> JavaScript)
-
-The editor is a `WKWebView` rendering `editor.html` with `editor-bundle.js` inlined. Communication is bidirectional:
-
-- **JS -> Swift**: `window.webkit.messageHandlers.contentChanged.postMessage(text)` triggers `NotesStore.save(_:)`
-- **JS -> Swift**: `window.webkit.messageHandlers.openURL.postMessage(url)` opens links via `NSWorkspace`
-- **Swift -> JS**: `webView.evaluateJavaScript(...)` calls these global functions defined in `editor.js`:
-  - `setInitialContent(content)` — called once after page load
-  - `resumeEditor(content)` — called when popover opens; recreates editor if it was destroyed
-  - `suspendEditor()` — called when popover closes; destroys the CodeMirror view to free resources
-
-### Persistence
-
-`NotesStore` saves the file on popover close (`flush()`) and on exit button click (`closeFile()`). The last-used file path is stored in `UserDefaults` under key `notesFilePath`. On first launch (no stored path), `LandingView` is shown instead of the editor.
-
-### JavaScript editor (`build/src/editor.js`)
-
-Built on CodeMirror 6. Key features:
-- **`livePreviewPlugin`**: walks the syntax tree on every doc/selection change, hides Markdown syntax markers (heading `#`, bold `**`, italic `*`, links) when the cursor is not on that line/range, and applies CSS classes for styled rendering.
-- **`emptyLineSelectionPlugin`**: detects empty lines within the current selection and adds class `lp-empty-in-sel`, which shows a thin left-edge highlight strip (native browser selection skips empty lines).
-- **Tables**: rendered as interactive HTML widgets via `TableWidget` (`WidgetType`); cells are editable `contenteditable` divs.
-- **Checkboxes**: `- [ ]` / `- [x]` task list items rendered as clickable checkbox widgets.
-- **Ordered list auto-renumber**: `renumberOrderedLists` keeps list numbers correct on every edit.
-- **Formatting hotkeys** (`build/src/formatting.js`): ⌘B/⌘I smart-toggle bold `**` and italic `*`. Syntax-tree based, so toggling works with the caret anywhere inside a styled span, with or without the markers selected, and through nesting like `***bold italic***`. Headless test suite: `cd build && npm test`.
-- **Nested lists** (`build/src/lists.js`): Tab/Shift-Tab indent/outdent list items (bullet, ordered, task) one level by inserting/removing a leading tab, Obsidian-style — the caret can be anywhere on the line, and range selections indent every list line they touch. Outside lists, Tab inserts a literal tab. Nested ordered lists renumber independently per level (`orderedListRenumberChanges`, called by `renumberOrderedLists`). Leading indent units get class `lp-indent-guide`, which draws Obsidian-style vertical indent guides. Tests in `build/test/lists.test.mjs`.
-- **Edge-click snap + touch reveal** (`edgeClickSnap` transaction filter, `cursorTouchesRange`): clicking the left/right edge of a rendered styled span (bold/italic/strikethrough/inline code) places the caret outside the whole construct (before/after the markers), and a caret touching either end of such a span reveals its raw source — Obsidian-style. Clicking mid-span reveals with the caret inside.
-- **`drawSelection` is used** — custom cursor/selection rendering eliminates WebKit ghost-caret artifacts. `emptyLineSelectionPlugin` complements it by highlighting empty lines inside selections (which `drawSelection` skips).
-
-CSS classes applied by the plugin: `lp-h1`–`lp-h6`, `lp-strong`, `lp-em`, `lp-code`, `lp-fenced-line`, `lp-link`, `lp-bullet`, `lp-bullet-line`, `lp-ordered-line`, `lp-checkbox`, `lp-checkbox-checked`, `lp-empty-in-sel`, `lp-indent-guide`.
-
-Decoration ordering rules: line decorations before mark decorations; overlapping `Decoration.replace` items are deduplicated.
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `project.yml` | XcodeGen spec — edit versions here, then run `xcodegen generate` |
-| `MiniNotes/App/AppDelegate.swift` | App entry, delegates to `StatusBarController` |
-| `MiniNotes/StatusBar/StatusBarController.swift` | Menu bar icon, popover lifecycle, event monitor |
-| `MiniNotes/Store/NotesStore.swift` | `isFileOpen`, `recentFileURL`, content, debounced persistence |
-| `MiniNotes/Views/ContentView.swift` | Root view: switches between `LandingView` and editor |
-| `MiniNotes/Views/LandingView.swift` | Landing page: file picker, reopen recent, author info |
-| `MiniNotes/Views/MarkdownEditorView.swift` | `NSViewRepresentable` wrapping WKWebView; JS bridge |
-| `MiniNotes/Views/SettingsView.swift` | File-location settings sheet (opened from toolbar filename button) |
-| `MiniNotes/Views/AppSettingsView.swift` | App Settings window (right-click menu): language, hotkey, auto-update, About |
-| `MiniNotes/Store/AppSettings.swift` | User preferences (language, hotkey, auto-update toggle), holds Sparkle updater ref |
-| `MiniNotes/Helpers/HotkeyManager.swift` | Carbon global hotkey registration |
-| `MiniNotes/Helpers/LocalizationHelper.swift` | All UI strings (EN/ZH), notification name extensions |
-| `appcast.xml` | Sparkle update feed, served from raw.githubusercontent.com on `main` |
-| `scripts/create-dmg.sh` | Signed DMG with custom background and Finder icon layout |
-| `MiniNotes/Assets.xcassets/` | App icon (notebook + pencil, lavender bg) at all required sizes |
-| `MiniNotes/Resources/editor.html` | HTML shell; JS bundle is inlined at load time |
-| `build/src/editor.js` | CodeMirror 6 editor + live-preview decorations |
-| `build/src/formatting.js` | ⌘B/⌘I smart formatting toggles (tests in `build/test/`) |
-| `build/src/lists.js` | Tab/Shift-Tab list indent/outdent, nested ordered-list renumbering (tests in `build/test/`) |
-| `build/package.json` | JS dependencies and esbuild script |
-
-## Typography
-
-All UI text uses two fonts (assumed installed in `~/Library/Fonts/`):
-- **LXGW WenKai Medium** (`LXGWWenKai-Medium`) — all body/UI text
-- **Maple Mono NF CN Regular** (`MapleMono-NF-CN-Regular`) — monospace/code contexts, version string
-
-## Release
-
-Use the `/ph-app` skill (`~/.claude/skills/ph-app`, `resources/release.md`) for the full workflow: version bump, Release build, Developer ID signing, notarization, DMG/ZIP packaging, Sparkle signing, appcast update, and GitHub publish.
-
-Auto-update is Sparkle (SPM, `SUFeedURL` and `SUPublicEDKey` in `project.yml`). Release DMGs must be signed with the EdDSA key matching the shipped `SUPublicEDKey` — the private key lives in the login keychain ("Private key for signing Sparkle updates") with a backup in iCloud Passwords ("Sparkle EdDSA Private Key"). Verify with Sparkle's `generate_keys -p` before releasing on a new machine.
+The core's tests point `ONYX_HOME` at a temp folder and make a vault of their own in another (`tests/core.rs`); inherit that for anything touching disk. The app's tests hold the words to the table, the icons to the assets, and the editor's text model and markdown reading to what they promise, with no window. `rust.yml` runs both on every push, on macOS, Windows and Linux.

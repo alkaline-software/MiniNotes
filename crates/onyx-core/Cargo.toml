@@ -1,0 +1,26 @@
+[package]
+name = "onyx-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Everything without a window: no UI dependency, so it is tested on every
+# system without a display and a script can drive it from a terminal.
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+dirs.workspace = true
+# The update check and download: plain HTTPS, no GitHub API.
+ureq = { version = "2", default-features = false, features = ["tls"] }
+# A note deleted goes to the system's trash, never straight off the disk.
+trash = "5"
+# The vault's folder watched, so the tree and an open note follow the disk.
+notify = "7"
+
+[target.'cfg(windows)'.dependencies]
+# The installer and updater on Windows; pinned to the version release.yml's vpk uses.
+velopack = "=1.2.161"
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,19 +1,9 @@
-# MiniNotes
+# Onyx
 
-A lightweight macOS menu bar app for quick Markdown notes. Lives in your menu bar — click to open, type, and it saves automatically.
+A note-taking app that keeps your notes as plain markdown files in a folder of your own and draws them as they read while you write. Rust and GPUI, for macOS, Windows and Linux, by Alkaline Software.
 
-## Features
+```
+cargo build -p onyx-app && scripts/dev-app.sh
+```
 
-- **Live Markdown preview** — headings, bold, italic, code, tables, and task lists render as you type
-- **Single file** — works with any `.md` file; default location is `~/Library/Application Support/MiniNotes/notes.md`
-- **Open in Obsidian** — jump to the file in Obsidian with one click (if installed)
-- **Pin window** — keep the panel open while you work in other apps
-- **Auto-save** — content is saved on every popover close and on exit
-
-## Download
-
-Grab the latest release from the [Releases](../../releases) page.
-
-## Author
-
-[Pingfan Hu](https://pingfanhu.com)
+Download a release from the [releases page](https://github.com/alkaline-software/onyx/releases/latest). MIT licensed.

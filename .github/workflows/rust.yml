@@ -1,0 +1,65 @@
+name: rust
+
+# The app and its core, on every OS the app ships for. Tests and a build on
+# every push and pull request; installers are release.yml's job and only
+# run on a tag, because a GPUI build is slow.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "*.md"]
+  pull_request:
+    paths-ignore: ["docs/**", "*.md"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        # ARM as well as x64 off a Mac: a Windows or Linux VM on Apple
+        # silicon is ARM, and both have their own installer.
+        os: [macos-latest, windows-latest, windows-11-arm, ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Everything gpui links against on Linux: the compilers, the fonts,
+      # Wayland and X11, Vulkan and its software driver, and ALSA.
+      - name: Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake pkg-config libssl-dev libzstd-dev \
+            libfontconfig-dev libfreetype-dev libwayland-dev libx11-xcb-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev \
+            libvulkan-dev libvulkan1 mesa-vulkan-drivers libasound2-dev
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # One cache per OS, shared across branches so a PR starts warm.
+          shared-key: rust-${{ matrix.os }}
+
+      - name: Tests
+        run: cargo test -p onyx-core --locked
+        env:
+          # Never let a CI run touch a real ~/.onyx.
+          ONYX_HOME: ${{ runner.temp }}/onyx-home
+
+      # Every phrase in every language, every icon named is carried.
+      - name: The app's tests
+        run: cargo test -p onyx-app --locked
+
+      - name: Build the app
+        run: cargo build -p onyx-app -p onyx-core --locked
+
+      - name: The CLI runs
+        run: cargo run -q -p onyx-core --locked -- paths
+        env:
+          ONYX_HOME: ${{ runner.temp }}/onyx-home
