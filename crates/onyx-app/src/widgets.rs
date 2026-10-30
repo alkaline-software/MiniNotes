@@ -491,3 +491,64 @@ mod tests {
         assert_eq!(shown("No keys here"), ["No keys here"]);
     }
 }
+
+/// A drawing's answer to the pointer, as emaki's handscroll has it: how
+/// far it is drawn to one side and how high, each from -1 to 1 with rest
+/// at 0, how near the pointer is, from 0 away to 1 over it, how fast
+/// each is moving, and where the pointer asks them to be. All follow on
+/// a spring (`step`), so the drawing runs a little past and settles.
+#[derive(Default)]
+pub struct Fig {
+    wind: f32,
+    wind_v: f32,
+    lift: f32,
+    lift_v: f32,
+    near: f32,
+    near_v: f32,
+    to: (f32, f32, f32),
+    at: Option<Instant>,
+    /// Where the drawing was last laid out, for the pointer's place on it.
+    pub bounds: Bounds<Pixels>,
+}
+
+impl Fig {
+    /// The pointer's place across and down the drawing, or none when it
+    /// has left: the drawing is asked there, or back to rest.
+    pub fn ask(&mut self, at: Option<Point<Pixels>>) {
+        self.to = match at {
+            Some(at) if self.bounds.size.width > px(0.) => (((at.x - self.bounds.left()) / self.bounds.size.width * 2. - 1.).clamp(-1., 1.), ((at.y - self.bounds.top()) / self.bounds.size.height * 2. - 1.).clamp(-1., 1.), 1.),
+            _ => (0., 0., 0.),
+        };
+    }
+
+    /// A frame's worth of the spring. Whether it is still moving.
+    pub fn step(&mut self) -> bool {
+        let now = Instant::now();
+        let dt = self.at.map(|at| now.duration_since(at).as_secs_f32()).unwrap_or(0.).min(1. / 30.);
+        self.at = Some(now);
+        // Stiff enough to keep up with the pointer, loose enough to run
+        // a little past where it stops.
+        let (stiff, damp) = (90., 13.);
+        for _ in 0..2 {
+            let h = dt / 2.;
+            self.wind_v += (stiff * (self.to.0 - self.wind) - damp * self.wind_v) * h;
+            self.wind += self.wind_v * h;
+            self.lift_v += (stiff * (self.to.1 - self.lift) - damp * self.lift_v) * h;
+            self.lift += self.lift_v * h;
+            self.near_v += (stiff * (self.to.2 - self.near) - damp * self.near_v) * h;
+            self.near += self.near_v * h;
+        }
+        let still = |at: f32, to: f32, v: f32| (at - to).abs() < 0.002 && v.abs() < 0.01;
+        if still(self.wind, self.to.0, self.wind_v) && still(self.lift, self.to.1, self.lift_v) && still(self.near, self.to.2, self.near_v) {
+            (self.wind, self.lift, self.near, self.wind_v, self.lift_v, self.near_v) = (self.to.0, self.to.1, self.to.2, 0., 0., 0.);
+            self.at = None;
+            return false;
+        }
+        true
+    }
+
+    /// Across and down, each from -1 to 1, and how near, from 0 to 1.
+    pub fn at(&self) -> (f32, f32, f32) {
+        (self.wind, self.lift, self.near)
+    }
+}

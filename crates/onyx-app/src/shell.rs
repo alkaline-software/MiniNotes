@@ -12,7 +12,7 @@
 //! typed, and the vault's folder is watched so the tree and an untouched
 //! note follow what another app does there.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -35,7 +35,7 @@ use crate::menu::{Entry, Menus};
 use crate::scroll::Scrollers;
 use crate::tabs::{Item as TabItem, Tabs};
 use crate::ui_state::{Rect, UiState};
-use crate::widgets::{choice_pill, float_shadow, key_text, page_in, small_pill, swallow_click, tip, Motion, Press, FOLD_ANIM, SLIDE};
+use crate::widgets::{choice_pill, float_shadow, kbd_hint, key_text, page_in, small_pill, swallow_click, tip, Fig, Motion, Press, FOLD_ANIM, SLIDE};
 
 actions!(onyx, [ToggleSidebar, OpenSettings, Escape, NewNote, NewFolder, NewVault, OpenVault, CloseVault, Save, ShowLive, ShowSource, ShowReading, ToggleReading, CloseTab, ReopenTab, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6, Tab7, Tab8, Tab9]);
 
@@ -132,6 +132,10 @@ pub struct Shell {
     /// The color the window's own ground was last set to, so it is set
     /// once and not at every frame.
     ground: Cell<Option<Hsla>>,
+    /// The drawing over the vault page's greeting, as it answers the pointer.
+    home_fig: Rc<RefCell<Fig>>,
+    /// Whom the vault's page greets: the account's first name.
+    user_name: String,
     /// The row a right click was on.
     pressed: Option<PathBuf>,
     /// A rename under way: the entry, and the field for its name.
@@ -272,6 +276,8 @@ impl Shell {
             press_taken: false,
             win_move: false,
             ground: Cell::new(None),
+            home_fig: Rc::default(),
+            user_name: crate::sys::user_first_name(),
             pressed: None,
             rename: None,
             rename_input,
@@ -1496,19 +1502,148 @@ impl Shell {
     }
 
     /// A vault with no note open.
+    /// The vault's page while no note is open, as emaki's home page is
+    /// made and Obsidian's new tab is filled: the drawing, the greeting in
+    /// the note's face, and under them what can be done next, each on a
+    /// pill with its key at the right.
     fn render_no_note(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
+        let face = self.look.text_family.clone();
+        let choice = |id: &'static str, icon: &'static str, label: &str, keys: &str, theme: &gpui_component::Theme| choice_pill(id, icon, label.to_string(), Press::Quiet, false, theme).w(px(240.)).h(px(34.)).px(px(14.)).gap(px(8.)).text_size(px(13.)).child(div().flex_1()).child(kbd_hint(keys, theme));
         v_flex()
-            .w_full()
-            .pt(px(120.))
-            .gap(px(16.))
+            .size_full()
             .items_center()
-            .child(div().text_size(px(13.5)).text_color(theme.muted_foreground).child(t("No note is open.")))
-            .child(choice_pill("new-note-page", "icons/file-plus.svg", t("New Note"), Press::Quiet, false, &theme).on_click(cx.listener(|this, _, window, cx| {
-                swallow_click(window, cx);
-                this.new_note(&NewNote, window, cx)
-            })))
+            .justify_center()
+            .pb(px(48.))
+            .gap(px(26.))
+            .child(v_flex().items_center().gap(px(12.)).child(self.home_figure(&theme, cx)).child(div().text_size(px(34.)).font_family(face).child(greeting(&self.user_name))))
+            .child(
+                v_flex()
+                    .gap(px(8.))
+                    .child(choice("home-new-note", "icons/file-plus.svg", t("New Note"), "⌘N", &theme).on_click(cx.listener(|this, _, window, cx| {
+                        swallow_click(window, cx);
+                        this.new_note(&NewNote, window, cx)
+                    })))
+                    .child(choice("home-new-folder", "icons/folder-plus.svg", t("New Folder"), "⌘⇧N", &theme).on_click(cx.listener(|this, _, window, cx| {
+                        swallow_click(window, cx);
+                        this.new_folder(&NewFolder, window, cx)
+                    })))
+                    .when(!self.closed_tabs.is_empty(), |d| {
+                        d.child(choice("home-reopen", "icons/history.svg", t("Reopen Closed Tab"), "⌘⇧T", &theme).on_click(cx.listener(|this, _, window, cx| {
+                            swallow_click(window, cx);
+                            this.reopen_tab(window, cx)
+                        })))
+                    })
+                    .child(choice("home-open-vault", "icons/folder-open.svg", t("Open Vault…"), "⌘⇧O", &theme).on_click(cx.listener(|this, _, window, cx| {
+                        swallow_click(window, cx);
+                        this.choose_vault(window, cx)
+                    }))),
+            )
             .into_any_element()
+    }
+
+    /// The drawing over the greeting: the icon's own picture, after
+    /// emaki's handscroll. A notebook rests on a tile of onyx, a thin cut
+    /// slab seen from above and a little to the left, its thickness at the
+    /// front and a vein of the band's teal across its top, and a pen lies
+    /// by. All of it is in the icon's own colors whatever the accent or
+    /// the appearance, in layers of one color each, since a picture is
+    /// painted in one color: the tile's base, its two sides, its top, its
+    /// vein, its glint, its shadow on the ground; the notebook's pages,
+    /// its cover, its lines, the bright line. The pen is one color, the
+    /// ink, so it shows on either ground, with its nib's slit in the
+    /// paper's. It answers the pointer as emaki's does: the notebook tilts
+    /// and lifts toward it, and the pen comes to the page and writes the
+    /// bright line as the pointer crosses, then goes back to lie by it,
+    /// the line written whole.
+    ///
+    /// The notebook is drawn from text made here, its tilt written into
+    /// the picture and rounded to half a degree: gpui turns a picture
+    /// after it is rasterized, and a line turned that way blurs. Each
+    /// tilt is rasterized once and kept by its text's hash (`svg().data`).
+    fn home_figure(&self, theme: &gpui_component::Theme, cx: &mut Context<Self>) -> impl IntoElement {
+        const W: f32 = 220.;
+        const H: f32 = 124.;
+        const PEN: f32 = 64.;
+        let (wind, lift, near, moving) = {
+            let mut fig = self.home_fig.borrow_mut();
+            let moving = fig.step();
+            let (wind, lift, near) = fig.at();
+            (wind, lift, near, moving)
+        };
+        let c = |hex: u32| -> Hsla { rgb(hex).into() };
+        let (deep, stone, top, vein, pages, paper, line, mark) = (c(0x1C1F3A), c(0x262A4C), c(0x3B4170), c(0x5FB8CA), c(0xDAD8CF), c(0xF8F7F2), c(0x474747), c(0xE8A93A));
+        // The pen in the drawing's own inks, the lines' gray by day and the
+        // pages' warm white by night: the window's foreground is near black
+        // and near white, too hard beside the picture's softer colors.
+        let pen = if theme.mode.is_dark() { pages } else { line };
+        let layer = |path: &'static str, color: Hsla| svg().path(path).absolute().left_0().top_0().w(px(W)).h(px(H)).text_color(color);
+        // The notebook in a box with room to turn in, the cover's center
+        // the turn's; the pages a step down and right of the cover.
+        let tilt = ((-8. + 5. * wind) * 2.).round() / 2.;
+        let turn = format!("rotate({tilt:.1} 50 55)");
+        let (book_x, book_y) = (60. + 4. * wind, -6. + 6. * lift);
+        let book = move |body: String, color: Hsla| svg().data(format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 110">{body}</svg>"#).as_bytes()).absolute().left(px(book_x)).top(px(book_y)).w(px(100.)).h(px(110.)).text_color(color);
+        // The bright line: whole at rest, and as far as the pointer has
+        // come across while the pen is at it.
+        let written = 28. * (1. - near) + 28. * ((wind + 1.) / 2.) * near;
+        let pages_fill = format!(r#"<rect x="20" y="18" width="68" height="82" rx="6" fill="currentColor" transform="{turn}"/>"#);
+        let pages_edge = format!(r#"<rect x="20" y="18" width="68" height="82" rx="6" fill="none" stroke="currentColor" stroke-width="1.5" transform="{turn}"/>"#);
+        let cover = format!(r#"<rect x="16" y="14" width="68" height="82" rx="6" fill="currentColor" transform="{turn}"/>"#);
+        let lines = format!(r#"<g fill="none" stroke="currentColor" stroke-linecap="round" transform="{turn}"><rect x="16" y="14" width="68" height="82" rx="6" stroke-width="1.5"/><path d="M30 39 H70" stroke-width="3.5"/><path d="M30 71 H70" stroke-width="3.5"/></g>"#);
+        let bright = format!(r#"<path d="M30 55 H{:.1}" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" transform="{turn}"/>"#, 30. + written.max(0.5));
+        // The pen's nib at the bright line's end, on the cover as it is
+        // turned; it lies by the tile while the pointer is away, and
+        // comes as far as the pointer is near.
+        let (sin, cos) = tilt.to_radians().sin_cos();
+        let reach = 30. + written - 50.;
+        let (nib_x, nib_y) = (book_x + 50. + reach * cos, book_y + 55. + reach * sin);
+        let (write_x, write_y) = (nib_x - 7. / 40. * PEN, nib_y - 33. / 40. * PEN);
+        let (rest_x, rest_y) = (152. + 3. * wind, 0. + 6. * lift);
+        let (pen_x, pen_y) = (rest_x + (write_x - rest_x) * near, rest_y + (write_y - rest_y) * near);
+        let pen_part = move |path: &'static str, color: Hsla| svg().path(path).absolute().left(px(pen_x)).top(px(pen_y)).size(px(PEN)).text_color(color);
+        let fig = self.home_fig.clone();
+        div()
+            .id("home-fig")
+            .relative()
+            .w(px(W))
+            .h(px(H))
+            .flex_shrink_0()
+            .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, _, cx| {
+                this.home_fig.borrow_mut().ask(Some(e.position));
+                cx.notify();
+            }))
+            .on_hover(cx.listener(|this, over: &bool, _, cx| {
+                if !*over {
+                    this.home_fig.borrow_mut().ask(None);
+                    cx.notify();
+                }
+            }))
+            // Where it is, for the pointer's place on it; and the next
+            // frame, while the spring has not settled.
+            .child(
+                canvas(move |bounds, _, _| fig.borrow_mut().bounds = bounds, move |_, _, window, _| {
+                    if moving {
+                        window.request_animation_frame();
+                    }
+                })
+                .absolute()
+                .inset_0(),
+            )
+            .child(layer("icons/home/shadow.svg", theme.foreground.opacity(0.1)))
+            .child(layer("icons/home/tile-base.svg", deep))
+            .child(layer("icons/home/tile-sides.svg", stone))
+            .child(layer("icons/home/tile-top.svg", top))
+            .child(layer("icons/home/tile-vein.svg", vein))
+            .child(layer("icons/home/tile-glint.svg", gpui::white().opacity(0.28)))
+            .child(book(pages_fill, pages))
+            .child(book(pages_edge, line))
+            .child(book(cover, paper))
+            .child(book(lines, line))
+            .child(book(bright, mark))
+            .child(pen_part("icons/home/pen-edge.svg", theme.background))
+            .child(pen_part("icons/home/pen.svg", pen))
+            .child(pen_part("icons/home/pen-slit.svg", paper))
     }
 
     fn render_note(&mut self, editor: Entity<Editor>, path: &Path, cx: &mut Context<Self>) -> AnyElement {
@@ -1839,6 +1974,15 @@ async fn futures_lite_select<T: 'static>(task: Task<T>, ticker: impl std::future
         std::task::Poll::Pending
     })
     .await
+}
+
+/// The greeting over the vault's page, by the hour and the name, as emaki
+/// says it.
+fn greeting(name: &str) -> String {
+    use chrono::Timelike as _;
+    let hour = chrono::Local::now().hour();
+    let part = if hour < 5 { t("Still up") } else if hour < 12 { t("Good morning") } else if hour < 18 { t("Good afternoon") } else { t("Good evening") };
+    if name.is_empty() { part.to_string() } else { tf("{part}, {name}", &[("part", &part), ("name", &name)]) }
 }
 
 impl Render for Shell {

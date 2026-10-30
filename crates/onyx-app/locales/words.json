@@ -269,6 +269,33 @@
     "de": "Schriften",
     "es": "Fuentes"
   },
+  "Good afternoon": {
+    "zh-Hans": "下午好",
+    "zh-Hant": "午安",
+    "ja": "こんにちは",
+    "ko": "좋은 오후입니다",
+    "fr": "Bon après-midi",
+    "de": "Guten Tag",
+    "es": "Buenas tardes"
+  },
+  "Good evening": {
+    "zh-Hans": "晚上好",
+    "zh-Hant": "晚安",
+    "ja": "こんばんは",
+    "ko": "좋은 저녁입니다",
+    "fr": "Bonsoir",
+    "de": "Guten Abend",
+    "es": "Buenas noches"
+  },
+  "Good morning": {
+    "zh-Hans": "早上好",
+    "zh-Hant": "早安",
+    "ja": "おはようございます",
+    "ko": "좋은 아침입니다",
+    "fr": "Bonjour",
+    "de": "Guten Morgen",
+    "es": "Buenos días"
+  },
   "Hide Onyx": {
     "zh-Hans": "隐藏 Onyx",
     "zh-Hant": "隱藏 Onyx",
@@ -286,15 +313,6 @@
     "fr": "Masquer les autres",
     "de": "Andere ausblenden",
     "es": "Ocultar otros"
-  },
-  "iCloud Drive": {
-    "zh-Hans": "iCloud 云盘",
-    "zh-Hant": "iCloud 雲碟",
-    "ja": "iCloud Drive",
-    "ko": "iCloud Drive",
-    "fr": "iCloud Drive",
-    "de": "iCloud Drive",
-    "es": "iCloud Drive"
   },
   "Installed font": {
     "zh-Hans": "已安装的字体",
@@ -422,15 +440,6 @@
     "de": "Neuer Ordner",
     "es": "Nueva carpeta"
   },
-  "New folder": {
-    "zh-Hans": "新建文件夹",
-    "zh-Hant": "新增檔案夾",
-    "ja": "新規フォルダ",
-    "ko": "새로운 폴더",
-    "fr": "Nouveau dossier",
-    "de": "Neuer Ordner",
-    "es": "Nueva carpeta"
-  },
   "New Note": {
     "zh-Hans": "新建笔记",
     "zh-Hant": "新增筆記",
@@ -467,14 +476,14 @@
     "de": "Neuer Tresor…",
     "es": "Nueva bóveda…"
   },
-  "No note is open.": {
-    "zh-Hans": "没有打开的笔记。",
-    "zh-Hant": "沒有打開的筆記。",
-    "ja": "開いているノートはありません。",
-    "ko": "열린 노트가 없습니다.",
-    "fr": "Aucune note n’est ouverte.",
-    "de": "Keine Notiz ist geöffnet.",
-    "es": "No hay ninguna nota abierta."
+  "New folder": {
+    "zh-Hans": "新建文件夹",
+    "zh-Hant": "新增檔案夾",
+    "ja": "新規フォルダ",
+    "ko": "새로운 폴더",
+    "fr": "Nouveau dossier",
+    "de": "Neuer Ordner",
+    "es": "Nueva carpeta"
   },
   "No notes yet. Make one with the button above.": {
     "zh-Hans": "还没有笔记。用上面的按钮新建一条。",
@@ -863,6 +872,15 @@
     "de": "Quelltext (⌥2)",
     "es": "Código fuente (⌥2)"
   },
+  "Still up": {
+    "zh-Hans": "还没睡",
+    "zh-Hant": "還沒睡",
+    "ja": "まだ起きていますね",
+    "ko": "아직 깨어 있군요",
+    "fr": "Encore debout",
+    "de": "Noch wach",
+    "es": "Todavía despierto"
+  },
   "System": {
     "zh-Hans": "跟随系统",
     "zh-Hant": "跟隨系統",
@@ -1078,6 +1096,24 @@
     "fr": "Réduire/agrandir",
     "de": "Zoomen",
     "es": "Zoom"
+  },
+  "iCloud Drive": {
+    "zh-Hans": "iCloud 云盘",
+    "zh-Hant": "iCloud 雲碟",
+    "ja": "iCloud Drive",
+    "ko": "iCloud Drive",
+    "fr": "iCloud Drive",
+    "de": "iCloud Drive",
+    "es": "iCloud Drive"
+  },
+  "{part}, {name}": {
+    "zh-Hans": "{part}，{name}",
+    "zh-Hant": "{part}，{name}",
+    "ja": "{part}、{name}さん",
+    "ko": "{part}, {name}님",
+    "fr": "{part}, {name}",
+    "de": "{part}, {name}",
+    "es": "{part}, {name}"
   },
   "{studio} presents": {
     "zh-Hans": "{studio} 出品",

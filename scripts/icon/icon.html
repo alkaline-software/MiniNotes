@@ -157,11 +157,36 @@ function spark(ctx, x, y, small) {
   ctx.fillStyle = VIOLET; sparkle(ctx, x, y, small ? 6.5 : 5.5); ctx.fill();
 }
 
+// The pen: one color, the navy, filled whole, the nib's slit in the paper's
+// white. Drawn in a box `size` across from its 40-unit drawing, whose tip
+// is at (7, 33), turned `rot` about the box's middle. Below 32 px the slit
+// goes and the pen is drawn thicker, as the lines are.
+function penPath(ctx) {
+  ctx.beginPath();
+  ctx.moveTo(12.1, 24.1); ctx.lineTo(31.1, 5.1); ctx.arc(33, 7, 2.7, Math.PI * 1.25, Math.PI * 0.25);
+  ctx.lineTo(15.9, 27.9); ctx.lineTo(7, 33); ctx.closePath();
+}
+function penPlace(ctx, x, y, size, rot) {
+  ctx.translate(x + size / 2, y + size / 2); ctx.rotate(rot); ctx.scale(size / 40, size / 40); ctx.translate(-20, -20);
+}
+function pen(ctx, x, y, size, rot, small, ink = NAVY) {
+  const slit = ink === NAVY ? '#ffffff' : NAVY;
+  ctx.save(); penPlace(ctx, x, y, size, rot);
+  penPath(ctx);
+  ctx.fillStyle = ink; ctx.fill();
+  ctx.strokeStyle = ink; ctx.lineWidth = small ? 4 : 1.2; ctx.lineJoin = 'round'; ctx.stroke();
+  if (!small) stroke(ctx, [[8.5, 31.5], [11.6, 28.4]], slit, 1.1);
+  ctx.restore();
+}
+function penSilhouette(ctx, x, y, size, rot) {
+  ctx.save(); penPlace(ctx, x, y, size, rot); penPath(ctx); ctx.restore(); ctx.fill();
+}
+
 // VARIANT draws the candidate in use; another number draws that one in its
 // place, in the app icon and in the template image, so candidates are
 // compared on the same page at every size. docs/design.md names the one
 // chosen and why the others lost.
-const VARIANT = 0;
+const VARIANT = 10;
 
 // A polished pebble: an ellipse filled navy, with a band of light across
 // it in the accent, straight (a cut band) or curved (a polished one),
@@ -220,16 +245,18 @@ function linesOf(small) { const r = LINES(small); r.w = LINES.w(small); return r
 // band of light across it, and the square note set askew on top, so the
 // stone shows at the note's edges. `stone` and `note` give the two their
 // place, size and tilt; `lines` the writing; `spark` the mark.
-function onStone(ctx, u, small, { stone, note: n, spark: sp, rows = null, lines = true }) {
+function onStone(ctx, u, small, { stone, note: n, spark: sp, pen: pn, rows = null, lines = true }) {
   const [cx, cy, rx, ry, rot, curved, bandAt] = stone;
   pebble(ctx, cx, cy, small ? rx * 1.04 : rx, small ? ry * 1.04 : ry, rot, { curved, bandW: small ? 0.42 : 0.36, bandAt });
   const [nx, ny, size, nrot, r] = n;
   note(ctx, u, nx, ny, size, nrot, { r, rows: lines ? (rows || linesOf(small)) : null });
   if (sp) spark(ctx, sp[0], sp[1], small);
+  if (pn) pen(ctx, pn[0], pn[1], pn[2], pn[3], small, pn[4]);
 }
-function onStoneSilhouette(ctx, { stone, note: n }) {
+function onStoneSilhouette(ctx, { stone, note: n, pen: pn }) {
   pebbleSilhouette(ctx, stone[0], stone[1], stone[2], stone[3], stone[4]);
   noteSilhouette(ctx, n[0], n[1], n[2], n[3], n[4]);
+  if (pn) penSilhouette(ctx, pn[0], pn[1], pn[2], pn[3]);
 }
 function onStoneCut(ctx, { note: n }) {
   noteCut(ctx, n[0], n[1], n[3], [[-9, -14, 16], [1, -14, 12]]);
@@ -265,7 +292,20 @@ const CANDIDATES = [
     { subject: (small) => ({ rows: null }) }),
   candidate('A note set off the stone', 'The note set to the top left of the stone, so the stone’s band shows whole at the lower right, as the one thing beside the note. The spark at the top right.',
     { stone: [56, 60, 32, 23, -0.12, true, 0.3], note: [40, 42, 42, -0.1, 2], spark: [82, 20] }),
+  // The pen in the spark's place, five ways, each on the first candidate's stone and note with no spark: [x, y, size, turn, ink]. On the stone the pen is in the paper's white or the amber, with its slit in the navy, or it is lost in the stone.
+  candidate('Writing', 'The pen on the note with its nib at the amber line’s end, as the vault page shows it while the pointer is over; it runs up to the top right, where the spark was.',
+    { stone: [52, 58, 32, 21, -0.12, false, 0.1], note: [46, 46, 44, -0.1, 2], pen: [52, 18, 34, 0] }),
+  candidate('At the corner', 'The pen leaning by the note’s top right corner with its nib on the stone, lying where the spark was, off the writing.',
+    { stone: [52, 58, 32, 21, -0.12, false, 0.1], note: [46, 46, 44, -0.1, 2], pen: [63, 8, 32, 0] }),
+  candidate('Across the foot', 'The pen laid across the note’s lower right corner, its nib on the stone below, the writing clear above it.',
+    { stone: [52, 58, 32, 21, -0.12, false, 0.1], note: [46, 46, 44, -0.1, 2], pen: [34, 42, 40, 0] }),
+  candidate('On the stone', 'The pen lying nearly level on the stone’s lower right, by the note’s foot, as one put down beside the page; in the paper’s white, so it shows on the stone.',
+    { stone: [52, 58, 32, 21, -0.12, false, 0.1], note: [46, 46, 44, -0.1, 2], pen: [50, 58, 30, 0.56, '#ffffff'] }),
+  candidate('Standing by', 'The pen upright at the note’s right with its nib down on the stone, its top above the stone as the note’s is; in the amber of the line it wrote, so it shows on the stone and on the ground both.',
+    { stone: [52, 58, 32, 21, -0.12, false, 0.1], note: [46, 46, 44, -0.1, 2], pen: [60, 28, 36, -0.785, AMBER] }),
 ];
+// The five with the pen, for comparing on one page.
+const PEN_CANDIDATES = CANDIDATES.slice(10, 15);
 // The checklist draws its boxes over its note.
 {
   const c = CANDIDATES[8];

@@ -33,6 +33,10 @@ sys-locale = "0.3"
 pulldown-cmark = { version = "0.13", default-features = false }
 # A caret steps by grapheme, not by byte or by char.
 unicode-segmentation = "1"
+# The hour, for the vault page's greeting.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# The account's name, for the greeting.
+whoami = "1"
 
 [target.'cfg(windows)'.dependencies]
 # Velopack's installer runs the app with a hook to answer at start (`main`).

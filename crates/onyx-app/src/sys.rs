@@ -298,3 +298,14 @@ pub fn keep_on_top(window: &gpui::Window) {
 #[cfg(not(target_os = "macos"))]
 pub fn keep_on_top(_window: &gpui::Window) {}
 
+/// The account's first name, else the login name, capitalized: whom the
+/// vault's page greets. The same crate asks every system.
+pub fn user_first_name() -> String {
+    let full = whoami::fallible::realname().unwrap_or_default();
+    let name = full.split_whitespace().next().map(str::to_string).filter(|s| !s.is_empty()).or_else(|| whoami::fallible::username().ok()).unwrap_or_default();
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
