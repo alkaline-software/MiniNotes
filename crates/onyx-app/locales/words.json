@@ -116,6 +116,15 @@
     "de": "Auswählen…",
     "es": "Elegir…"
   },
+  "Close (Esc)": {
+    "zh-Hans": "关闭 (Esc)",
+    "zh-Hant": "關閉 (Esc)",
+    "ja": "閉じる (Esc)",
+    "ko": "닫기 (Esc)",
+    "fr": "Fermer (Esc)",
+    "de": "Schließen (Esc)",
+    "es": "Cerrar (Esc)"
+  },
   "Close Tab": {
     "zh-Hans": "关闭标签页",
     "zh-Hant": "關閉標籤頁",
@@ -251,6 +260,42 @@
     "de": "Ablage",
     "es": "Archivo"
   },
+  "Find Next": {
+    "zh-Hans": "查找下一个",
+    "zh-Hant": "尋找下一個",
+    "ja": "次を検索",
+    "ko": "다음 찾기",
+    "fr": "Rechercher le suivant",
+    "de": "Weitersuchen",
+    "es": "Buscar siguiente"
+  },
+  "Find Previous": {
+    "zh-Hans": "查找上一个",
+    "zh-Hant": "尋找上一個",
+    "ja": "前を検索",
+    "ko": "이전 찾기",
+    "fr": "Rechercher le précédent",
+    "de": "Rückwärts suchen",
+    "es": "Buscar anterior"
+  },
+  "Find in this note": {
+    "zh-Hans": "在此笔记中查找",
+    "zh-Hant": "在此筆記中尋找",
+    "ja": "このノート内を検索",
+    "ko": "이 노트에서 찾기",
+    "fr": "Rechercher dans cette note",
+    "de": "In dieser Notiz suchen",
+    "es": "Buscar en esta nota"
+  },
+  "Find…": {
+    "zh-Hans": "查找…",
+    "zh-Hant": "尋找…",
+    "ja": "検索…",
+    "ko": "찾기…",
+    "fr": "Rechercher…",
+    "de": "Suchen…",
+    "es": "Buscar…"
+  },
   "Font name": {
     "zh-Hans": "字体名称",
     "zh-Hant": "字體名稱",
@@ -314,6 +359,24 @@
     "de": "Andere ausblenden",
     "es": "Ocultar otros"
   },
+  "Home": {
+    "zh-Hans": "主页",
+    "zh-Hant": "首頁",
+    "ja": "ホーム",
+    "ko": "홈",
+    "fr": "Accueil",
+    "de": "Start",
+    "es": "Inicio"
+  },
+  "How the vault's page greets you and the sidebar shows you.": {
+    "zh-Hans": "仓库页面如何问候你，侧边栏如何显示你。",
+    "zh-Hant": "儲存庫頁面如何問候你，側邊欄如何顯示你。",
+    "ja": "保管庫のページでの挨拶と、サイドバーでの表示に使われます。",
+    "ko": "보관함 페이지의 인사와 사이드바에 표시되는 모습입니다.",
+    "fr": "Comment la page du coffre vous salue et comment la barre latérale vous présente.",
+    "de": "Wie die Seite des Tresors Sie begrüßt und die Seitenleiste Sie zeigt.",
+    "es": "Cómo te saluda la página de la bóveda y cómo te muestra la barra lateral."
+  },
   "Installed font": {
     "zh-Hans": "已安装的字体",
     "zh-Hant": "已安裝的字體",
@@ -359,15 +422,6 @@
     "de": "Groß",
     "es": "Grande"
   },
-  "Layout": {
-    "zh-Hans": "版面",
-    "zh-Hant": "版面",
-    "ja": "レイアウト",
-    "ko": "레이아웃",
-    "fr": "Mise en page",
-    "de": "Layout",
-    "es": "Diseño"
-  },
   "Light": {
     "zh-Hans": "浅色",
     "zh-Hant": "淺色",
@@ -376,15 +430,6 @@
     "fr": "Clair",
     "de": "Hell",
     "es": "Claro"
-  },
-  "Lines no wider than a comfortable line of reading, centered.": {
-    "zh-Hans": "每行不宽于舒适的阅读宽度，并居中。",
-    "zh-Hant": "每行不寬於舒適的閱讀寬度，並置中。",
-    "ja": "読みやすい幅を超えない行にして、中央に置きます。",
-    "ko": "읽기 편한 너비를 넘지 않는 줄로, 가운데에 둡니다.",
-    "fr": "Des lignes pas plus larges qu’une ligne de lecture confortable, centrées.",
-    "de": "Zeilen nicht breiter als eine angenehme Lesezeile, zentriert.",
-    "es": "Líneas no más anchas que una línea de lectura cómoda, centradas."
   },
   "Medium": {
     "zh-Hans": "中",
@@ -485,6 +530,24 @@
     "de": "Neuer Ordner",
     "es": "Nueva carpeta"
   },
+  "Next (↩)": {
+    "zh-Hans": "下一个 (↩)",
+    "zh-Hant": "下一個 (↩)",
+    "ja": "次へ (↩)",
+    "ko": "다음 (↩)",
+    "fr": "Suivant (↩)",
+    "de": "Nächster (↩)",
+    "es": "Siguiente (↩)"
+  },
+  "No matches.": {
+    "zh-Hans": "没有匹配。",
+    "zh-Hant": "沒有符合。",
+    "ja": "一致するものはありません。",
+    "ko": "일치하는 항목이 없습니다.",
+    "fr": "Aucun résultat.",
+    "de": "Keine Treffer.",
+    "es": "Sin coincidencias."
+  },
   "No notes yet. Make one with the button above.": {
     "zh-Hans": "还没有笔记。用上面的按钮新建一条。",
     "zh-Hant": "還沒有筆記。用上面的按鈕新增一則。",
@@ -502,6 +565,24 @@
     "fr": "Aucun coffre",
     "de": "Kein Tresor",
     "es": "Sin bóveda"
+  },
+  "Normal Width": {
+    "zh-Hans": "标准宽度",
+    "zh-Hant": "標準寬度",
+    "ja": "標準幅",
+    "ko": "일반 너비",
+    "fr": "Largeur normale",
+    "de": "Normale Breite",
+    "es": "Ancho normal"
+  },
+  "Normal width": {
+    "zh-Hans": "标准宽度",
+    "zh-Hant": "標準寬度",
+    "ja": "標準幅",
+    "ko": "일반 너비",
+    "fr": "Largeur normale",
+    "de": "Normale Breite",
+    "es": "Ancho normal"
   },
   "Note font": {
     "zh-Hans": "笔记字体",
@@ -593,6 +674,15 @@
     "de": "Immergrün",
     "es": "Pervinca"
   },
+  "Previous (⇧↩)": {
+    "zh-Hans": "上一个 (⇧↩)",
+    "zh-Hant": "上一個 (⇧↩)",
+    "ja": "前へ (⇧↩)",
+    "ko": "이전 (⇧↩)",
+    "fr": "Précédent (⇧↩)",
+    "de": "Vorheriger (⇧↩)",
+    "es": "Anterior (⇧↩)"
+  },
   "Quit Onyx": {
     "zh-Hans": "退出 Onyx",
     "zh-Hant": "結束 Onyx",
@@ -620,15 +710,6 @@
     "de": "Lesen (⌥3)",
     "es": "Leer (⌥3)"
   },
-  "Readable line length": {
-    "zh-Hans": "易读的行宽",
-    "zh-Hant": "易讀的行寬",
-    "ja": "読みやすい行幅",
-    "ko": "읽기 편한 줄 너비",
-    "fr": "Longueur de ligne lisible",
-    "de": "Lesbare Zeilenlänge",
-    "es": "Ancho de línea legible"
-  },
   "Recent": {
     "zh-Hans": "最近",
     "zh-Hant": "最近",
@@ -655,6 +736,15 @@
     "fr": "Notes de version",
     "de": "Versionshinweise",
     "es": "Notas de la versión"
+  },
+  "Remove": {
+    "zh-Hans": "移除",
+    "zh-Hant": "移除",
+    "ja": "削除",
+    "ko": "제거",
+    "fr": "Supprimer",
+    "de": "Entfernen",
+    "es": "Quitar"
   },
   "Rename": {
     "zh-Hans": "重命名",
@@ -746,6 +836,33 @@
     "de": "Sichern",
     "es": "Guardar"
   },
+  "Search (⌘K)": {
+    "zh-Hans": "搜索 (⌘K)",
+    "zh-Hant": "搜尋 (⌘K)",
+    "ja": "検索 (⌘K)",
+    "ko": "검색 (⌘K)",
+    "fr": "Rechercher (⌘K)",
+    "de": "Suchen (⌘K)",
+    "es": "Buscar (⌘K)"
+  },
+  "Search your notes": {
+    "zh-Hans": "搜索笔记",
+    "zh-Hant": "搜尋筆記",
+    "ja": "ノートを検索",
+    "ko": "노트 검색",
+    "fr": "Rechercher dans vos notes",
+    "de": "In Ihren Notizen suchen",
+    "es": "Buscar en tus notas"
+  },
+  "Search…": {
+    "zh-Hans": "搜索…",
+    "zh-Hant": "搜尋…",
+    "ja": "検索…",
+    "ko": "검색…",
+    "fr": "Rechercher…",
+    "de": "Suchen…",
+    "es": "Buscar…"
+  },
   "Select All": {
     "zh-Hans": "全选",
     "zh-Hant": "全選",
@@ -817,15 +934,6 @@
     "fr": "Afficher dans le dossier",
     "de": "Im Ordner anzeigen",
     "es": "Mostrar en la carpeta"
-  },
-  "Sidebar": {
-    "zh-Hans": "边栏",
-    "zh-Hant": "側邊欄",
-    "ja": "サイドバー",
-    "ko": "사이드바",
-    "fr": "Barre latérale",
-    "de": "Seitenleiste",
-    "es": "Barra lateral"
   },
   "Sidebar (⌘⇧B)": {
     "zh-Hans": "边栏 (⌘⇧B)",
@@ -962,6 +1070,15 @@
     "de": "Die Notiz konnte nicht geschrieben werden: {why}",
     "es": "No se pudo escribir la nota: {why}"
   },
+  "The picture could not be used: {why}": {
+    "zh-Hans": "无法使用这张图片：{why}",
+    "zh-Hant": "無法使用這張圖片：{why}",
+    "ja": "この画像は使えません: {why}",
+    "ko": "이 사진을 사용할 수 없습니다: {why}",
+    "fr": "Impossible d’utiliser cette image : {why}",
+    "de": "Das Bild konnte nicht verwendet werden: {why}",
+    "es": "No se pudo usar esa imagen: {why}"
+  },
   "The update did not go through: {e}": {
     "zh-Hans": "更新未完成：{e}",
     "zh-Hant": "更新未完成：{e}",
@@ -1015,6 +1132,15 @@
     "fr": "Basculer la tâche",
     "de": "Aufgabe umschalten",
     "es": "Alternar tarea"
+  },
+  "Type to search every note's name and words.": {
+    "zh-Hans": "输入以搜索每篇笔记的名字和内容。",
+    "zh-Hant": "輸入以搜尋每篇筆記的名字和內容。",
+    "ja": "入力するとすべてのノートの名前と本文を検索します。",
+    "ko": "입력하면 모든 노트의 이름과 내용을 검색합니다.",
+    "fr": "Tapez pour chercher dans le nom et les mots de chaque note.",
+    "de": "Tippen Sie, um in Namen und Text jeder Notiz zu suchen.",
+    "es": "Escribe para buscar en el nombre y las palabras de cada nota."
   },
   "Undo": {
     "zh-Hans": "撤销",
@@ -1079,6 +1205,15 @@
     "de": "Darstellung",
     "es": "Visualización"
   },
+  "Wide": {
+    "zh-Hans": "宽",
+    "zh-Hant": "寬",
+    "ja": "ワイド",
+    "ko": "넓게",
+    "fr": "Large",
+    "de": "Breit",
+    "es": "Ancho"
+  },
   "Window": {
     "zh-Hans": "窗口",
     "zh-Hant": "視窗",
@@ -1087,6 +1222,24 @@
     "fr": "Fenêtre",
     "de": "Fenster",
     "es": "Ventana"
+  },
+  "Your name": {
+    "zh-Hans": "你的名字",
+    "zh-Hant": "你的名字",
+    "ja": "あなたの名前",
+    "ko": "내 이름",
+    "fr": "Votre nom",
+    "de": "Ihr Name",
+    "es": "Tu nombre"
+  },
+  "Your picture and name": {
+    "zh-Hans": "你的头像和名字",
+    "zh-Hant": "你的頭像和名字",
+    "ja": "あなたの写真と名前",
+    "ko": "내 사진과 이름",
+    "fr": "Votre photo et votre nom",
+    "de": "Ihr Bild und Ihr Name",
+    "es": "Tu foto y tu nombre"
   },
   "Zoom": {
     "zh-Hans": "缩放",
@@ -1105,6 +1258,42 @@
     "fr": "iCloud Drive",
     "de": "iCloud Drive",
     "es": "iCloud Drive"
+  },
+  "no matches": {
+    "zh-Hans": "没有匹配",
+    "zh-Hant": "沒有符合",
+    "ja": "一致なし",
+    "ko": "일치 없음",
+    "fr": "aucun résultat",
+    "de": "keine Treffer",
+    "es": "sin coincidencias"
+  },
+  "{n} hit": {
+    "zh-Hans": "{n} 处",
+    "zh-Hant": "{n} 處",
+    "ja": "{n} 件",
+    "ko": "{n}개",
+    "fr": "{n} occurrence",
+    "de": "{n} Treffer",
+    "es": "{n} coincidencia"
+  },
+  "{n} hits": {
+    "zh-Hans": "{n} 处",
+    "zh-Hant": "{n} 處",
+    "ja": "{n} 件",
+    "ko": "{n}개",
+    "fr": "{n} occurrences",
+    "de": "{n} Treffer",
+    "es": "{n} coincidencias"
+  },
+  "{n} of {total}": {
+    "zh-Hans": "{n} / {total}",
+    "zh-Hant": "{n} / {total}",
+    "ja": "{n} / {total}",
+    "ko": "{n} / {total}",
+    "fr": "{n} sur {total}",
+    "de": "{n} von {total}",
+    "es": "{n} de {total}"
   },
   "{part}, {name}": {
     "zh-Hans": "{part}，{name}",

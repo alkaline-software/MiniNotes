@@ -27,7 +27,7 @@ use gpui_component::Root;
 
 use i18n::t;
 use onyx_core::config::Config;
-use shell::{CloseTab, CloseVault, Escape, NewFolder, NewNote, NewVault, ReopenTab, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6, Tab7, Tab8, Tab9, OpenSettings, OpenVault, Save, Shell, ShowLive, ShowReading, ShowSource, ToggleReading, ToggleSidebar, KEY_CONTEXT, MIN_W};
+use shell::{CloseTab, CloseVault, Escape, FindInNote, FindNext, FindPrev, NewFolder, NewNote, NewVault, ReopenTab, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6, Tab7, Tab8, Tab9, OpenSettings, OpenVault, Save, Shell, ShowLive, ShowNormal, ShowReading, ShowSource, ShowWide, ToggleReading, ToggleSearch, ToggleSidebar, KEY_CONTEXT, MIN_W};
 
 actions!(onyx_app, [Quit, CloseWindow, Hide, HideOthers, ShowAll, Minimize, Zoom, ToggleFullScreen]);
 
@@ -42,6 +42,12 @@ fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("secondary-shift-o", OpenVault, None),
         KeyBinding::new("secondary-s", Save, None),
         KeyBinding::new("secondary-e", ToggleReading, None),
+        KeyBinding::new("secondary-k", ToggleSearch, None),
+        KeyBinding::new("secondary-f", FindInNote, None),
+        KeyBinding::new("secondary-g", FindNext, None),
+        KeyBinding::new("secondary-shift-g", FindPrev, None),
+        KeyBinding::new("escape", Escape, Some(shell::SEARCH_CONTEXT)),
+        KeyBinding::new("escape", Escape, Some(shell::FIND_CONTEXT)),
         KeyBinding::new("escape", Escape, Some(KEY_CONTEXT)),
         KeyBinding::new("escape", Escape, Some(settings::SETTINGS_CONTEXT)),
         KeyBinding::new("escape", Escape, Some(editor::EDITOR_CONTEXT)),
@@ -116,13 +122,17 @@ pub(crate) fn app_menus() -> Vec<Menu> {
                 MenuItem::action(t("Bold"), editor::Bold),
                 MenuItem::action(t("Italic"), editor::Italic),
                 MenuItem::action(t("Toggle Task"), editor::ToggleTask),
+                MenuItem::separator(),
+                MenuItem::action(t("Find…"), FindInNote),
+                MenuItem::action(t("Find Next"), FindNext),
+                MenuItem::action(t("Find Previous"), FindPrev),
             ],
         });
     }
     menus.push(Menu {
         name: t("View").into(),
         disabled: false,
-        items: vec![MenuItem::action(t("Edit"), ShowLive), MenuItem::action(t("Source"), ShowSource), MenuItem::action(t("Read"), ShowReading), MenuItem::separator(), MenuItem::action(t("Toggle Sidebar"), ToggleSidebar)],
+        items: vec![MenuItem::action(t("Edit"), ShowLive), MenuItem::action(t("Source"), ShowSource), MenuItem::action(t("Read"), ShowReading), MenuItem::separator(), MenuItem::action(t("Normal Width"), ShowNormal), MenuItem::action(t("Wide"), ShowWide), MenuItem::separator(), MenuItem::action(t("Search…"), ToggleSearch), MenuItem::separator(), MenuItem::action(t("Toggle Sidebar"), ToggleSidebar)],
     });
     menus.push(Menu { name: t("Window").into(), disabled: false, items: vec![MenuItem::action(t("Minimize"), Minimize), MenuItem::action(t("Zoom"), Zoom), MenuItem::action(t("Toggle Full Screen"), ToggleFullScreen)] });
     menus
@@ -169,7 +179,7 @@ fn remembered_bounds(cx: &App) -> Option<Bounds<Pixels>> {
 fn open_main_window(cx: &mut App) -> anyhow::Result<WindowHandle<Root>> {
     let bounds = remembered_bounds(cx).unwrap_or_else(|| Bounds::centered(None, size(px(1080.), px(720.)), cx));
     let titlebar = if cfg!(target_os = "macos") {
-        TitlebarOptions { title: None, appears_transparent: true, traffic_light_position: Some(point(px(17.), px(20.))) }
+        TitlebarOptions { title: None, appears_transparent: true, traffic_light_position: Some(point(px(sys::LIGHTS_ROW.0), px(sys::LIGHTS_ROW.1))) }
     } else {
         TitlebarOptions { title: Some("Onyx".into()), appears_transparent: false, traffic_light_position: None }
     };

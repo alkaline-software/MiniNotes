@@ -20,11 +20,17 @@ pub struct AppConfig {
     /// Ask for the newest release once a day and say so in Settings.
     /// Nothing is installed without the person's press.
     pub check_updates: bool,
+    /// The person's name, as the vault's page greets them and the
+    /// sidebar's foot shows them; empty, the account's first name.
+    pub user_name: String,
+    /// The person's picture: the path of the copy kept under the app's
+    /// own folder, or empty for their initial on the accent.
+    pub avatar: String,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self { appearance: "system".into(), accent: "teal".into(), language: "system".into(), check_updates: true }
+        Self { appearance: "system".into(), accent: "teal".into(), language: "system".into(), check_updates: true, user_name: String::new(), avatar: String::new() }
     }
 }
 
@@ -53,14 +59,11 @@ pub struct EditorConfig {
     /// The person's own sizes, kept while a preset is chosen so Custom
     /// comes back to them; `None` until Custom was chosen once.
     pub sizes: Option<TextSizes>,
-    /// Lines no wider than a comfortable line of reading, centered;
-    /// off, a note runs the width of the window.
-    pub readable_width: bool,
 }
 
 impl Default for EditorConfig {
     fn default() -> Self {
-        Self { text_face: "inter".into(), mono_face: "jetbrains".into(), cjk_face: "auto".into(), text_custom: String::new(), mono_custom: String::new(), cjk_custom: String::new(), text_size: "medium".into(), sizes: None, readable_width: true }
+        Self { text_face: "inter".into(), mono_face: "jetbrains".into(), cjk_face: "auto".into(), text_custom: String::new(), mono_custom: String::new(), cjk_custom: String::new(), text_size: "medium".into(), sizes: None }
     }
 }
 

@@ -31,12 +31,12 @@ use crate::widgets::{swallow_click, tip};
 
 /// A tab's width is its name's and no more: the title in the tab's type
 /// plus `TAB_ROOM`, the edges and the close button, never under
-/// `TAB_LEAST` nor over `TAB_MAX`. Once the row has no room for every
-/// tab at its own width, the widest give way first, down to `TAB_MIN`
-/// each; past that the row scrolls.
+/// `TAB_LEAST`, a comfortable tab for a short name, nor over `TAB_MAX`.
+/// Once the row has no room for every tab at its own width, the widest
+/// give way first, down to `TAB_MIN` each; past that the row scrolls.
 pub const TAB_MAX: f32 = 200.;
 pub const TAB_MIN: f32 = 88.;
-pub const TAB_LEAST: f32 = 56.;
+pub const TAB_LEAST: f32 = 140.;
 /// The tab's edges, the gap, the close button, the outline's two sides
 /// and a little over, since a name wider than its room by a hair is cut
 /// to an ellipsis.
@@ -51,11 +51,16 @@ pub const STRIP_GAP: f32 = 14.;
 /// padding around them, the folder's mark at its left end, and the gap
 /// between two pills.
 pub const TAB_H: f32 = 24.;
-const PILL_PAD: f32 = 3.;
+pub const PILL_PAD: f32 = 3.;
 const PILL_HANDLE: f32 = 20.;
 const PILL_GAP: f32 = 6.;
 /// Where a pill's first tab starts.
 const PILL_LEAD: f32 = PILL_PAD + PILL_HANDLE + TAB_GAP;
+/// The square after the last tab, with a plus on it, which shows the
+/// vault's page and leaves every tab open: a tab's height on a track
+/// of its own, and the gap before it.
+const PLUS_W: f32 = TAB_H + 2. * PILL_PAD;
+const PLUS_ROOM: f32 = PLUS_W + PILL_GAP;
 /// How long ⌘ (Ctrl elsewhere) is held, alone, before every tab shows
 /// the number that goes to it.
 const HINT_HOLD: Duration = Duration::from_millis(500);
@@ -275,7 +280,8 @@ impl Tabs {
                 self.born.insert(folder.clone(), if first { now.checked_sub(TAB_ANIM * 2).unwrap_or(now) } else { now });
             }
         }
-        let row = self.row_w.get();
+        // The row less the plus square's room, which is always there.
+        let row = (self.row_w.get() - PLUS_ROOM).max(0.);
         let n = keys.len();
         let chrome: f32 = self.groups.iter().map(|(_, keys)| pill_chrome(keys.len())).sum::<f32>() + PILL_GAP * (self.groups.len() as f32 - 1.).max(0.);
         let wanted: Vec<f32> = keys.iter().map(|k| items.iter().find(|i| i.path == *k).map(|i| self.fit(&i.title, window, cx)).unwrap_or(TAB_MIN)).collect();
@@ -481,7 +487,7 @@ impl Tabs {
         let row_w = self.row_w.clone();
         let entity = cx.entity().downgrade();
         let settled = Width { from: TAB_MIN, to: TAB_MIN, at: Instant::now(), serial: 0 };
-        let wide: f32 = self.groups.iter().map(|(_, keys)| pill_chrome(keys.len()) + keys.iter().map(|k| self.width_of(k)).sum::<f32>()).sum::<f32>() + PILL_GAP * (self.groups.len() as f32 - 1.).max(0.);
+        let wide: f32 = self.groups.iter().map(|(_, keys)| pill_chrome(keys.len()) + keys.iter().map(|k| self.width_of(k)).sum::<f32>()).sum::<f32>() + PILL_GAP * (self.groups.len() as f32 - 1.).max(0.) + PLUS_ROOM;
         let fits = wide <= self.row_w.get() + 0.5;
         let hints = self.hints;
         let mut row = h_flex()
@@ -675,6 +681,36 @@ impl Tabs {
                 wrap.into_any_element()
             });
         }
+        // The plus after the last tab: raised while the vault's page shows.
+        let home = shown.is_none();
+        let hover_bg = plate_bg.opacity(0.5);
+        row = row.child(
+            div()
+                .id("tab-plus")
+                .size(px(PLUS_W))
+                .flex_shrink_0()
+                .p(px(PILL_PAD))
+                .rounded(px(9.))
+                .bg(track_bg)
+                .cursor_pointer()
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, _| this.press_taken = true))
+                .managed_tooltip(|window, cx| tip(t("Home"), window, cx))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    swallow_click(window, cx);
+                    this.show_home(window, cx)
+                }))
+                .child(
+                    div()
+                        .size(px(TAB_H))
+                        .rounded(px(7.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .when(home, |d| d.bg(plate_bg).shadow_sm())
+                        .when(!home, |d| d.hover(move |s| s.bg(hover_bg)))
+                        .child(Icon::default().path("icons/plus.svg").with_size(px(14.)).text_color(if home { theme.foreground } else { theme.muted_foreground })),
+                ),
+        );
         row.into_any_element()
     }
 }

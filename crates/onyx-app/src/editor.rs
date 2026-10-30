@@ -22,7 +22,6 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui::*;
-use gpui_component::text::{TextView, TextViewStyle};
 use gpui_component::{input, ActiveTheme as _};
 
 use crate::lines::{list_line, next_marker, quote_line, Doc, ListKind, Pos, Sel};
@@ -218,6 +217,12 @@ pub struct Editor {
     origin: Point<Pixels>,
     over_link: bool,
     read_only: bool,
+    /// The phrase the find bar looks for, every place it is in the note,
+    /// and which of them the bar stands on. The one stood on is the
+    /// selection; the rest are washed.
+    find_query: String,
+    find: Rc<Vec<(Pos, Pos)>>,
+    find_at: usize,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -347,6 +352,9 @@ impl Editor {
             origin: Point::default(),
             over_link: false,
             read_only: false,
+            find_query: String::new(),
+            find: Rc::new(Vec::new()),
+            find_at: 0,
         }
     }
 
@@ -381,13 +389,98 @@ impl Editor {
     }
 
 
+    /// A change of how the note is shown. The keyboard stays where it
+    /// is: a caret placed stays placed, and a note left by a click in the
+    /// margin keeps reading whole, whichever mode follows.
     pub fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
         if self.mode != mode {
+            let was_reading = self.mode == Mode::Reading;
             self.mode = mode;
             self.marked = None;
             self.want_scroll = true;
+            if was_reading && self.focused {
+                self.kick_blink(cx);
+            }
             cx.notify();
         }
+    }
+
+    // -- find ---------------------------------------------------------------
+
+    /// Every place the phrase is in the note, and the bar on the first
+    /// at or after the caret, which becomes the selection. The count.
+    pub fn set_find(&mut self, query: &str, cx: &mut Context<Self>) -> usize {
+        self.find_query = query.trim().to_string();
+        let was = self.sel.range().0;
+        self.refind();
+        self.find_at = self.find.iter().position(|(a, _)| *a >= was).unwrap_or(0);
+        if self.find.is_empty() {
+            cx.notify();
+        } else {
+            self.find_go(cx);
+        }
+        self.find.len()
+    }
+
+    pub fn clear_find(&mut self, cx: &mut Context<Self>) {
+        self.find_query.clear();
+        self.find = Rc::new(Vec::new());
+        self.find_at = 0;
+        cx.notify();
+    }
+
+    /// The matches found again, as the text is now.
+    fn refind(&mut self) {
+        let found: Vec<(Pos, Pos)> = if self.find_query.is_empty() {
+            Vec::new()
+        } else {
+            let text = self.doc.text();
+            onyx_core::search::find_all(&text, &self.find_query).into_iter().map(|r| (self.doc.pos_of(r.start), self.doc.pos_of(r.end))).collect()
+        };
+        self.find = Rc::new(found);
+        if self.find_at >= self.find.len() {
+            self.find_at = 0;
+        }
+    }
+
+    fn find_go(&mut self, cx: &mut Context<Self>) {
+        let Some(&(a, b)) = self.find.get(self.find_at) else { return };
+        self.sel = Sel { anchor: a, head: b };
+        self.preferred_x = None;
+        self.want_scroll = true;
+        self.kick_blink(cx);
+        cx.notify();
+    }
+
+    /// The next match, or the one before, round the ends.
+    pub fn find_step(&mut self, delta: i64, cx: &mut Context<Self>) {
+        let n = self.find.len() as i64;
+        if n == 0 {
+            return;
+        }
+        self.find_at = (self.find_at as i64 + delta).rem_euclid(n) as usize;
+        self.find_go(cx);
+    }
+
+    pub fn find_count(&self) -> usize {
+        self.find.len()
+    }
+
+    pub fn find_at(&self) -> usize {
+        self.find_at
+    }
+
+    /// Whether the note takes no change: a note that is read only, or
+    /// one shown as it reads.
+    fn locked(&self) -> bool {
+        self.read_only || self.mode == Mode::Reading
+    }
+
+    /// Whether the marks around the caret are shown: only while the
+    /// keyboard is in the editor, and never as the note reads, which is
+    /// Edit's own drawing with every mark away and nothing to type in.
+    fn revealing(&self) -> bool {
+        self.focused && self.mode != Mode::Reading
     }
 
     pub fn set_look(&mut self, look: Look, cx: &mut Context<Self>) {
@@ -430,6 +523,9 @@ impl Editor {
         self.reanalyze();
         self.renumber();
         trace("after_edit(analyze+renumber)", started);
+        if !self.find_query.is_empty() {
+            self.refind();
+        }
         self.want_scroll = true;
         self.preferred_x = None;
         self.kick_blink(cx);
@@ -504,14 +600,14 @@ impl Editor {
     }
 
     fn caret_shown(&self) -> bool {
-        self.focused && ((self.blink_at.elapsed().as_millis() / BLINK.as_millis()) % 2 == 0)
+        self.revealing() && ((self.blink_at.elapsed().as_millis() / BLINK.as_millis()) % 2 == 0)
     }
 
     // -- edits --------------------------------------------------------------
 
     /// `text` in place of the selection.
     fn insert(&mut self, text: &str, cx: &mut Context<Self>) {
-        if self.read_only {
+        if self.locked() {
             return;
         }
         let (a, b) = self.sel.range();
@@ -528,7 +624,7 @@ impl Editor {
     }
 
     fn enter(&mut self, _: &Enter, _: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only {
+        if self.locked() {
             return;
         }
         if !self.sel.is_caret() {
@@ -577,7 +673,7 @@ impl Editor {
     }
 
     fn tab(&mut self, _: &Tab, _: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only {
+        if self.locked() {
             return;
         }
         let lines: Vec<usize> = self.selected_lines().filter(|l| list_line(self.doc.line(*l)).is_some()).collect();
@@ -599,7 +695,7 @@ impl Editor {
     }
 
     fn outdent(&mut self, _: &Outdent, _: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only {
+        if self.locked() {
             return;
         }
         let mut changes = Vec::new();
@@ -631,7 +727,7 @@ impl Editor {
     }
 
     fn backspace(&mut self, _: &Backspace, _: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only {
+        if self.locked() {
             return;
         }
         if !self.sel.is_caret() {
@@ -656,7 +752,7 @@ impl Editor {
     }
 
     fn delete(&mut self, _: &Delete, _: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only {
+        if self.locked() {
             return;
         }
         if !self.sel.is_caret() {
@@ -671,7 +767,7 @@ impl Editor {
     }
 
     fn delete_word_back(&mut self, _: &DeleteWordBack, _: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only {
+        if self.locked() {
             return;
         }
         if !self.sel.is_caret() {
@@ -685,7 +781,7 @@ impl Editor {
     }
 
     fn delete_line_back(&mut self, _: &DeleteLineBack, _: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only {
+        if self.locked() {
             return;
         }
         let at = self.sel.head;
@@ -712,7 +808,7 @@ impl Editor {
         let text = self.selection_text();
         if !text.is_empty() {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
-            if !self.read_only {
+            if !self.locked() {
                 self.insert("", cx);
                 self.doc.end_step();
             }
@@ -720,7 +816,7 @@ impl Editor {
     }
 
     fn paste(&mut self, _: &input::Paste, _: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only {
+        if self.locked() {
             return;
         }
         if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
@@ -731,7 +827,7 @@ impl Editor {
     }
 
     fn undo(&mut self, _: &input::Undo, _: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only {
+        if self.locked() {
             return;
         }
         if let Some(sel) = self.doc.undo() {
@@ -745,7 +841,7 @@ impl Editor {
     }
 
     fn redo(&mut self, _: &input::Redo, _: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only {
+        if self.locked() {
             return;
         }
         if let Some(sel) = self.doc.redo() {
@@ -763,7 +859,7 @@ impl Editor {
     /// word; a caret on nothing opens an empty pair to type into, and in
     /// such a pair closes it again.
     fn toggle_wrap(&mut self, marker: &str, kind: SpanKind, cx: &mut Context<Self>) {
-        if self.read_only {
+        if self.locked() {
             return;
         }
         let (a, b) = self.sel.range();
@@ -841,7 +937,7 @@ impl Editor {
     /// ⌘↩: a task's box ticked or cleared; a bullet made a task; a plain
     /// line made a task.
     fn toggle_task(&mut self, _: &ToggleTask, _: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only {
+        if self.locked() {
             return;
         }
         let line = self.sel.head.line;
@@ -999,7 +1095,7 @@ impl Editor {
     /// Whether the caret is on a line: never while the keyboard is
     /// elsewhere, so a note left by a click in the margin reads whole.
     fn on_line(&self, line: usize) -> bool {
-        if !self.focused {
+        if !self.revealing() {
             return false;
         }
         let (a, b) = self.sel.range();
@@ -1007,7 +1103,7 @@ impl Editor {
     }
 
     fn touches(&self, r: &Range<usize>, inclusive: bool) -> bool {
-        if !self.focused {
+        if !self.revealing() {
             return false;
         }
         let (a, b) = self.sel.range();
@@ -1056,7 +1152,7 @@ impl Editor {
 
     fn block_revealed(&self, first: usize, last: usize) -> bool {
         let (a, b) = self.sel.range();
-        self.mode == Mode::Source || (self.focused && a.line <= last && b.line >= first)
+        self.mode == Mode::Source || (self.revealing() && a.line <= last && b.line >= first)
     }
 
     /// The whole note laid out at `width`, line by line, each only when
@@ -1699,7 +1795,7 @@ impl EntityInputHandler for Editor {
 
     fn replace_text_in_range(&mut self, range_utf16: Option<Range<usize>>, text: &str, _: &mut Window, cx: &mut Context<Self>) {
         stamp("key typed");
-        if self.read_only || self.mode == Mode::Reading {
+        if self.locked() {
             return;
         }
         let (a, b) = match range_utf16 {
@@ -1716,7 +1812,7 @@ impl EntityInputHandler for Editor {
     }
 
     fn replace_and_mark_text_in_range(&mut self, range_utf16: Option<Range<usize>>, new_text: &str, new_selected_range: Option<Range<usize>>, _: &mut Window, cx: &mut Context<Self>) {
-        if self.read_only || self.mode == Mode::Reading {
+        if self.locked() {
             return;
         }
         let (a, b) = match range_utf16 {
@@ -1760,10 +1856,6 @@ impl EntityInputHandler for Editor {
 
 impl Render for Editor {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.mode == Mode::Reading {
-            let text = self.doc.text();
-            return div().id("reading").w_full().child(reading_view(without_front_matter(&text), &self.look, cx)).into_any_element();
-        }
         div()
             .id("editor")
             .key_context(EDITOR_CONTEXT)
@@ -1819,53 +1911,6 @@ impl Render for Editor {
     }
 }
 
-/// A note's text without the YAML header at its top, which the reading
-/// view would read as a rule and a heading.
-fn without_front_matter(text: &str) -> &str {
-    let Some(rest) = text.strip_prefix("---\n") else { return text };
-    match rest.find("\n---") {
-        Some(at) if rest[at + 4..].is_empty() || rest[at + 4..].starts_with('\n') => rest[at + 4..].trim_start_matches('\n'),
-        _ => text,
-    }
-}
-
-/// A note as it reads, drawn by the toolkit's markdown view in the
-/// studio's manner: the words' face and size, inline code on a plate of
-/// the accent, a block of code on a muted plate.
-fn reading_view(text: &str, look: &Look, cx: &App) -> impl IntoElement {
-    let theme = cx.theme().clone();
-    let dark = theme.mode.is_dark();
-    let style = TextViewStyle {
-        heading_base_font_size: Pixels::ZERO,
-        heading_font_size: Some(std::sync::Arc::new(|level, base| {
-            base * match level {
-                1 => 1.618,
-                2 => 1.462,
-                3 => 1.318,
-                4 => 1.188,
-                5 => 1.076,
-                _ => 1.,
-            }
-        })),
-        paragraph_gap: rems(0.8),
-        highlight_theme: theme.highlight_theme.clone(),
-        strong_font_weight: Some(FontWeight::SEMIBOLD),
-        inline_code_font_family: Some(look.mono_family.clone()),
-        inline_code: HighlightStyle { color: Some(theme.link), ..Default::default() },
-        inline_code_chip: Some((theme.primary.opacity(if dark { 0.16 } else { 0.10 }), theme.primary.opacity(if dark { 0.22 } else { 0.18 }))),
-        chunk_icons: "icons/lang".into(),
-        lang_marks: true,
-        ..Default::default()
-    }
-    .code_block(StyleRefinement::default().bg(theme.muted).border_1().border_color(theme.border).rounded(px(10.)).px(px(12.)).py(px(10.)));
-    div()
-        .font(Font { family: look.text_family.clone(), features: FontFeatures::default(), fallbacks: look.text_fallbacks.clone(), weight: FontWeight::NORMAL, style: FontStyle::Normal })
-        .text_size(px(look.text_px))
-        .line_height(relative(LINE))
-        .text_color(theme.foreground)
-        .child(TextView::markdown(SharedString::from(format!("reading-{}", if dark { "d" } else { "l" })), SharedString::from(text.to_string())).selectable(true).style(style))
-}
-
 // -- the element ------------------------------------------------------------
 
 /// The element that lays the note out and paints it, one child of the
@@ -1889,6 +1934,8 @@ struct PaintInfo {
     sel: Sel,
     marked: Option<(Pos, Pos)>,
     caret_on: bool,
+    reading: bool,
+    find: Rc<Vec<(Pos, Pos)>>,
 }
 
 impl IntoElement for EditorElement {
@@ -1978,11 +2025,13 @@ impl Element for EditorElement {
                 blocks: e.analysis.code_blocks.iter().map(|b| (b.first, b.last, e.base_inset(&e.analysis.lines[b.first]))).collect(),
                 sel: e.sel,
                 marked: e.marked,
-                caret_on: e.caret_shown() && e.mode != Mode::Reading,
+                caret_on: e.caret_shown(),
+                reading: e.mode == Mode::Reading,
+                find: e.find.clone(),
             }
         });
         window.handle_input(&info.focus, ElementInputHandler::new(bounds, editor.clone()), cx);
-        window.set_cursor_style(if info.over_link { CursorStyle::PointingHand } else { CursorStyle::IBeam }, &prepaint.hitbox);
+        window.set_cursor_style(if info.over_link { CursorStyle::PointingHand } else if info.reading { CursorStyle::Arrow } else { CursorStyle::IBeam }, &prepaint.hitbox);
 
         let cache = info.cache.borrow();
         let view = window.content_mask().bounds;
@@ -2027,6 +2076,20 @@ impl Element for EditorElement {
                         for b in text_boxes(&r.line, range.clone(), r.line_h, text_origin) {
                             let b = Bounds::new(point(b.origin.x - px(2.), b.origin.y + px(r.line_h * 0.08)), size(b.size.width + px(4.), px(r.line_h * 0.84)));
                             window.paint_quad(quad(b, px(4.), *color, px(0.), theme.transparent, BorderStyle::default()));
+                        }
+                    }
+                    // The find bar's matches on this line, washed; the one
+                    // the bar stands on is the selection, painted after.
+                    if !info.find.is_empty() {
+                        let wash = Hsla { s: 0.1, ..theme.selection };
+                        for &(fa, fb) in info.find.iter().filter(|(a, b)| a.line <= line && line <= b.line) {
+                            let from = if fa.line == line { r.shown.to_shown(fa.col) } else { 0 };
+                            let to = if fb.line == line { r.shown.to_shown(fb.col) } else { r.shown.text.len() };
+                            if from < to {
+                                for b in text_boxes(&r.line, from..to, r.line_h, text_origin) {
+                                    window.paint_quad(quad(b, px(2.), wash, px(0.), theme.transparent, BorderStyle::default()));
+                                }
+                            }
                         }
                     }
                     // The selection, as far as it lies on this line.
@@ -2165,10 +2228,10 @@ impl Element for EditorElement {
             let (x, y) = (f32::from(ev.position.x - bounds.origin.x), f32::from(ev.position.y - bounds.origin.y));
             stamp("mouse down");
             ed.update(cx, |e, cx| {
-                if e.mode == Mode::Reading {
-                    return;
-                }
-                if !e.focus.is_focused(window) {
+                // As the note reads a press follows a link or ticks a
+                // task and places no caret, and takes no keyboard.
+                let reading = e.mode == Mode::Reading;
+                if !reading && !e.focus.is_focused(window) {
                     window.focus(&e.focus, cx);
                 }
                 match e.hit(x, y) {
@@ -2183,6 +2246,9 @@ impl Element for EditorElement {
                         }
                     }
                     _ => {
+                        if reading {
+                            return;
+                        }
                         let p = match e.pos_at(x, y, &e.cache.borrow()) {
                             Some(p) => p,
                             None => return,

@@ -42,6 +42,8 @@ pub struct UiState {
     pub recent_vaults: Vec<PathBuf>,
     /// The folders folded shut in the sidebar's tree, by their path.
     pub folded: Vec<PathBuf>,
+    /// The notes shown wide, to the page's edges.
+    pub wide: Vec<PathBuf>,
 }
 
 fn file() -> std::path::PathBuf {

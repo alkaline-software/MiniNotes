@@ -371,12 +371,25 @@ impl Motion {
     /// the width it is given among the choices.
     #[allow(clippy::type_complexity)]
     pub fn segmented<V: 'static>(&self, control: &'static str, options: Vec<(&'static str, &'static str, SharedString)>, current: &'static str, fill: bool, icons: bool, on: Rc<dyn Fn(&mut V, &'static str, &mut Window, &mut Context<V>)>, cx: &mut Context<V>) -> AnyElement {
-        // With `icons`, a segment is its icon alone and its word is said
-        // on hover.
-        let (pad, seg_h, seg_px, seg_text, round) = (px(3.), px(22.), px(if icons { 8. } else { 11. }), px(12.5), px(6.));
+        self.segmented_in(control, options.into_iter().map(|(k, i, l)| (k, i, l, None)).collect(), current, fill, icons, on, cx)
+    }
+
+    /// A segmented control of icons alone, each segment a square and each
+    /// in a color of its own: the icon takes its color while it is the
+    /// choice or under the pointer, in place of the plain ink.
+    pub fn segmented_tinted<V: 'static>(&self, control: &'static str, options: Vec<(&'static str, &'static str, SharedString, Hsla)>, current: &'static str, on: Rc<dyn Fn(&mut V, &'static str, &mut Window, &mut Context<V>)>, cx: &mut Context<V>) -> AnyElement {
+        self.segmented_in(control, options.into_iter().map(|(k, i, l, c)| (k, i, l, Some(c))).collect(), current, false, true, on, cx)
+    }
+
+    fn segmented_in<V: 'static>(&self, control: &'static str, options: Vec<(&'static str, &'static str, SharedString, Option<Hsla>)>, current: &'static str, fill: bool, icons: bool, on: Rc<dyn Fn(&mut V, &'static str, &mut Window, &mut Context<V>)>, cx: &mut Context<V>) -> AnyElement {
+        // With `icons`, a segment is its icon alone, a square of 22 with
+        // no track under the row: the raised plate and the icon's color
+        // say which is chosen, and a track beside the card's edge was one
+        // layer too many. Its word is said on hover.
+        let (pad, seg_h, seg_px, seg_text, round) = (px(if icons { 0. } else { 3. }), px(22.), px(if icons { 0. } else { 11. }), px(12.5), px(6.));
         let theme = cx.theme().clone();
         let dark = theme.mode.is_dark();
-        let track_bg = if dark { theme.tab_bar_segmented } else { theme.muted };
+        let track_bg = if icons { theme.transparent } else if dark { theme.tab_bar_segmented } else { theme.muted };
         let plate_bg = if dark { theme.secondary_active } else { theme.popover };
         let (from, to) = {
             let mut st = self.choices.borrow_mut();
@@ -406,7 +419,7 @@ impl Motion {
             _ => None,
         };
         let measured = plate.is_some();
-        let ids: Vec<String> = options.iter().map(|(k, _, _)| format!("{control}-{k}")).collect();
+        let ids: Vec<String> = options.iter().map(|(k, _, _, _)| format!("{control}-{k}")).collect();
         let segments = self.segments.clone();
         let entity = cx.entity().downgrade();
         let row = h_flex()
@@ -430,12 +443,14 @@ impl Motion {
                     let _ = entity.update(cx, |_, cx| cx.notify());
                 }
             })
-            .children(options.into_iter().map(|(key, icon, label)| {
+            .children(options.into_iter().map(|(key, icon, label, tint)| {
                 let active = key == current;
                 let on = on.clone();
+                let lit = tint.unwrap_or(theme.foreground);
                 h_flex()
                     .id(SharedString::from(format!("{control}-{key}")))
                     .h(seg_h)
+                    .when(icons, |d| d.w(seg_h).justify_center())
                     .px(seg_px)
                     .gap(px(5.))
                     .items_center()
@@ -448,11 +463,11 @@ impl Motion {
                     // state, never under a `when`: gpui hears the pointer
                     // leave only while a hover style is set, and a segment
                     // came back to rest lit.
-                    .text_color(if active { theme.foreground } else { theme.muted_foreground })
-                    .hover(|s| s.text_color(theme.foreground))
+                    .text_color(if active { lit } else { theme.muted_foreground })
+                    .hover(move |s| s.text_color(lit))
                     .when(active, |d| d.font_weight(FontWeight::MEDIUM))
                     .on_click(cx.listener(move |this, _, window, cx| on(this, key, window, cx)))
-                    .when(!icon.is_empty(), |d| d.child(Icon::default().path(icon).with_size(if icons { px(15.) } else { seg_text + px(1.5) })))
+                    .when(!icon.is_empty(), |d| d.child(Icon::default().path(icon).with_size(if icons { px(14.) } else { seg_text + px(1.5) })))
                     .map(|d| if icons { d.managed_tooltip(move |window, cx| tip(label.clone(), window, cx)) } else { d.child(label) })
             }));
         h_flex()

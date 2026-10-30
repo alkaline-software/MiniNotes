@@ -4519,12 +4519,14 @@ name = "onyx-app"
 version = "0.5.0"
 dependencies = [
  "anyhow",
+ "block2 0.6.2",
  "chrono",
  "gpui",
  "gpui-base",
  "gpui-component",
  "gpui-component-assets",
  "gpui_platform",
+ "image",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",

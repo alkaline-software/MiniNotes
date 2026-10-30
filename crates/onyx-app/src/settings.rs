@@ -106,7 +106,10 @@ pub fn open(shell: WeakEntity<Shell>, cx: &mut App) {
             // The installed-font fields are made with this window, since
             // an input watches the window it was made in.
             if let Some(s) = weak.upgrade() {
-                s.update(cx, |s, cx| s.make_font_inputs(window, cx));
+                s.update(cx, |s, cx| {
+                    s.make_font_inputs(window, cx);
+                    s.make_name_input(window, cx);
+                });
             }
             let view = cx.new(|cx| {
                 if let Some(s) = weak.upgrade() {
@@ -353,12 +356,24 @@ impl Shell {
                 }))
         }));
         let accent_name = t(crate::look::accent(&self.cfg.app.accent).name);
-        vec![group(
-            None,
-            None,
-            vec![line(t("Appearance").into(), None, looks.into_any_element(), &theme), line(t("Accent").into(), Some(accent_name.into()), swatches.into_any_element(), &theme)],
-            &theme,
-        )]
+        // The person: their picture, a press on it or on Choose… picks
+        // one, and their name in a field beside it.
+        let name_field = self.name_input.as_ref().map(|input| {
+            let focus = input.read(cx).focus_handle(cx);
+            div().id("name-field").track_focus(&focus).w(px(150.)).h(CONTROL_H).px(px(8.)).flex().items_center().rounded(px(6.)).bg(if dark { theme.muted } else { theme.background }).border_1().border_color(theme.input).text_size(px(12.5)).child(Input::new(input).appearance(false).bordered(false))
+        });
+        let you = h_flex()
+            .gap(px(8.))
+            .items_center()
+            .child(self.avatar(28., &theme).id("settings-avatar").cursor_pointer().hover(|s| s.opacity(0.85)).on_click(cx.listener(|this, _, _, cx| this.pick_avatar(cx))))
+            .child(small_pill("avatar-choose", "icons/image.svg", t("Choose…"), Press::Quiet, false, &theme).h(CONTROL_H).on_click(cx.listener(|this, _, _, cx| this.pick_avatar(cx))))
+            .when(!self.cfg.app.avatar.is_empty(), |d| d.child(small_pill("avatar-remove", "icons/trash.svg", t("Remove"), Press::Danger, false, &theme).h(CONTROL_H).on_click(cx.listener(|this, _, _, cx| this.set_avatar(String::new(), cx)))))
+            .children(name_field)
+            .into_any_element();
+        vec![
+            group(None, None, vec![line(t("Appearance").into(), None, looks.into_any_element(), &theme), line(t("Accent").into(), Some(accent_name.into()), swatches.into_any_element(), &theme)], &theme),
+            group(None, None, vec![line(t("Your picture and name").into(), Some(t("How the vault's page greets you and the sidebar shows you.").into()), you, &theme)], &theme),
+        ]
     }
 
     /// Editor: the faces a note is set in, each a tile drawn in itself;
@@ -437,6 +452,27 @@ impl Shell {
             rows.push(group(Some(title), None, card, &theme));
         }
         rows
+    }
+
+    /// The name's field, made with the settings window: the account's
+    /// first name stands in it as a placeholder, and a name typed takes
+    /// its place everywhere the window says it.
+    pub(crate) fn make_name_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let machine = crate::sys::user_first_name();
+        let saved = self.cfg.app.user_name.clone();
+        let input = cx.new(|cx| {
+            let mut s = InputState::new(window, cx).placeholder(if machine.is_empty() { t("Your name").to_string() } else { machine });
+            s.set_value(saved, window, cx);
+            s
+        });
+        cx.subscribe_in(&input, window, |this, input, ev: &InputEvent, _, cx| {
+            if let InputEvent::Change = ev {
+                let name = input.read(cx).value().to_string();
+                this.set_user_name(name, cx);
+            }
+        })
+        .detach();
+        self.name_input = Some(input);
     }
 
     /// The three installed-font fields, made with the settings window and
@@ -524,21 +560,7 @@ impl Shell {
                 line(name, None, control, &theme)
             })
             .collect();
-        let readable = self.motion.switch(
-            "readable",
-            self.cfg.editor.readable_width,
-            Rc::new(|this: &mut Self, on, _, cx| {
-                this.cfg.editor.readable_width = on;
-                let _ = Config::edit(|c| c.editor.readable_width = on);
-                cx.notify();
-            }),
-            cx,
-        );
-        vec![
-            group(None, None, vec![line(t("Size").into(), None, presets, &theme)], &theme),
-            group(None, None, rows, &theme),
-            group(Some(t("Layout").into()), None, vec![line(t("Readable line length").into(), Some(t("Lines no wider than a comfortable line of reading, centered.").into()), readable, &theme)], &theme),
-        ]
+        vec![group(None, None, vec![line(t("Size").into(), None, presets, &theme)], &theme), group(None, None, rows, &theme)]
     }
 
     /// Under Custom, beside a size not Medium's: a button that puts it

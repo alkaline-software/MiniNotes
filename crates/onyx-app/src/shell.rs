@@ -37,12 +37,16 @@ use crate::tabs::{Item as TabItem, Tabs};
 use crate::ui_state::{Rect, UiState};
 use crate::widgets::{choice_pill, float_shadow, kbd_hint, key_text, page_in, small_pill, swallow_click, tip, Fig, Motion, Press, FOLD_ANIM, SLIDE};
 
-actions!(onyx, [ToggleSidebar, OpenSettings, Escape, NewNote, NewFolder, NewVault, OpenVault, CloseVault, Save, ShowLive, ShowSource, ShowReading, ToggleReading, CloseTab, ReopenTab, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6, Tab7, Tab8, Tab9]);
+actions!(onyx, [ToggleSidebar, OpenSettings, Escape, NewNote, NewFolder, NewVault, OpenVault, CloseVault, Save, ShowLive, ShowSource, ShowReading, ToggleReading, ShowNormal, ShowWide, ToggleSearch, FindInNote, FindNext, FindPrev, CloseTab, ReopenTab, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6, Tab7, Tab8, Tab9]);
 
 /// The key context of the main window.
 pub const KEY_CONTEXT: &str = "Shell";
 /// The key context of a sheet over the window.
 const SHEET_CONTEXT: &str = "Sheet";
+/// The key context of the search over the window, and of the find bar
+/// over the note.
+pub const SEARCH_CONTEXT: &str = "SearchPalette";
+pub const FIND_CONTEXT: &str = "FindBar";
 
 /// The window's ground shows this far around the card.
 pub const FRAME: Pixels = px(4.);
@@ -55,10 +59,32 @@ pub const TITLEBAR_H: Pixels = px(48.);
 /// The room the traffic lights take at the window's left.
 const TRAFFIC_W: Pixels = px(85.);
 const STRIP_BTN: Pixels = px(26.);
-pub const SIDEBAR_W: Pixels = px(240.);
-/// A note's words run this wide at most, as a comfortable line of
-/// reading, when the settings keep them readable.
+/// The strip's padding at either end of the card's top.
+const STRIP_PAD: Pixels = px(7.5);
+pub const SIDEBAR_W: Pixels = px(268.);
+/// The rail: the sidebar folded to a column at the window's left, with
+/// the traffic lights stacked at its head on a Mac, then the sidebar's
+/// and the search's buttons, then its entries, each a square on one
+/// pitch, and the app's icon and the person's picture at its foot.
+pub const RAIL_W: Pixels = px(56.);
+const RAIL_ENTRY: Pixels = px(36.);
+const RAIL_GAP: Pixels = px(4.);
+/// The first rail button's top: under the lights' column on a Mac.
+const RAIL_TOP: Pixels = px(if cfg!(target_os = "macos") { 92. } else { 52. });
+/// Where the notes card flies out from the rail.
+const FLY_TOP: Pixels = px(52.);
+/// How many lines of a note the search shows under it.
+const SEARCH_LINES: usize = 3;
+/// Either end of the path bar: the modes' group, three squares of 22
+/// with 2 between them, is the wider.
+const BAR_END: Pixels = px(72.);
+/// A note's sheet is this wide, as a comfortable line of reading,
+/// unless the note is shown wide; the tinted page shows `SHEET_MARGIN`
+/// round the sheet, and the words stand `SHEET_GUTTER` in from its
+/// edge, Normal's and Wide's.
 const READABLE_W: Pixels = px(700.);
+const SHEET_MARGIN: Pixels = px(16.);
+const SHEET_GUTTER: (f32, f32) = (32., 48.);
 /// The least the window is dragged to.
 pub const MIN_W: Pixels = px(720.);
 /// How often the vault's changes are looked for.
@@ -116,8 +142,10 @@ pub struct Shell {
     vault: Option<Vault>,
     /// The open notes, in the row's order: a folder's together.
     tabs: Vec<Tab>,
-    /// The tab showing.
+    /// The tab showing, and the one that showed before the vault's page
+    /// took its place, for ⌘W on the page.
     shown: Option<PathBuf>,
+    last_shown: Option<PathBuf>,
     /// The tabs closed, the last closed last, for ⌘⇧T.
     closed_tabs: Vec<PathBuf>,
     /// The row's drawing and motion.
@@ -129,6 +157,13 @@ pub struct Shell {
     /// What every editor is set in, and how every note is shown.
     pub(crate) look: Look,
     mode: Mode,
+    /// The notes shown wide, to the page's edges; the rest run a
+    /// comfortable line of reading. A change of width is a move: which
+    /// note, which way, and when it began. The page's width, as last
+    /// painted, is what Wide runs to.
+    wide: HashSet<PathBuf>,
+    wide_anim: Option<(PathBuf, bool, Instant)>,
+    page_w: Rc<Cell<f32>>,
     /// The color the window's own ground was last set to, so it is set
     /// once and not at every frame.
     ground: Cell<Option<Hsla>>,
@@ -136,6 +171,21 @@ pub struct Shell {
     home_fig: Rc<RefCell<Fig>>,
     /// Whom the vault's page greets: the account's first name.
     user_name: String,
+    /// The notes card flown out from the rail: when it was asked, and
+    /// whether it is coming or going.
+    rail_fly: Option<(Instant, bool)>,
+    /// The search over the vault: its field, what it found, and the
+    /// search under way, which the next keystroke drops.
+    search_open: bool,
+    search_input: Entity<InputState>,
+    search_scroll: ScrollHandle,
+    search_results: Option<onyx_core::search::Results>,
+    search_task: Option<Task<()>>,
+    /// The find bar over the note, and its field.
+    find_open: bool,
+    find_input: Entity<InputState>,
+    /// The name's field in the settings, made with their window.
+    pub(crate) name_input: Option<Entity<InputState>>,
     /// The row a right click was on.
     pressed: Option<PathBuf>,
     /// A rename under way: the entry, and the field for its name.
@@ -235,6 +285,29 @@ impl Shell {
             }
         })
         .detach();
+        // The search's field: each keystroke searches, ↩ opens the first
+        // note found. The find bar's: each keystroke finds, ↩ goes to
+        // the next match and ⇧↩ to the one before.
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder(t("Search your notes")));
+        cx.subscribe_in(&search_input, window, |this, _, ev: &InputEvent, window, cx| match ev {
+            InputEvent::Change => this.run_search(cx),
+            InputEvent::PressEnter { .. } => {
+                if let Some(first) = this.search_results.as_ref().and_then(|r| r.notes.first()) {
+                    let path = first.path.clone();
+                    let query = this.search_input.read(cx).value().to_string();
+                    this.open_found(path, &query, window, cx);
+                }
+            }
+            _ => {}
+        })
+        .detach();
+        let find_input = cx.new(|cx| InputState::new(window, cx).placeholder(t("Find in this note")));
+        cx.subscribe_in(&find_input, window, |this, _, ev: &InputEvent, _, cx| match ev {
+            InputEvent::Change => this.run_find(cx),
+            InputEvent::PressEnter { shift, .. } => this.find_step(if *shift { -1 } else { 1 }, cx),
+            _ => {}
+        })
+        .detach();
         // A quit writes every note with changes first, and waits for
         // what the window remembers to be on the disk.
         cx.on_app_quit(|this, cx| {
@@ -258,6 +331,9 @@ impl Shell {
         let mut shell = Self {
             look: Self::look_of(&cfg.editor),
             mode: Mode::from_key(ui.mode.as_deref().unwrap_or("live")),
+            wide: ui.wide.iter().cloned().collect(),
+            wide_anim: None,
+            page_w: Rc::new(Cell::new(0.)),
             cfg,
             motion: Motion::default(),
             scrollers: Scrollers::default(),
@@ -271,13 +347,23 @@ impl Shell {
             vault: None,
             tabs: Vec::new(),
             shown: None,
+            last_shown: None,
             closed_tabs: Vec::new(),
             tabs_row: Tabs::default(),
             press_taken: false,
             win_move: false,
             ground: Cell::new(None),
             home_fig: Rc::default(),
-            user_name: crate::sys::user_first_name(),
+            user_name: String::new(),
+            rail_fly: None,
+            search_open: false,
+            search_input,
+            search_scroll: ScrollHandle::new(),
+            search_results: None,
+            search_task: None,
+            find_open: false,
+            find_input,
+            name_input: None,
             pressed: None,
             rename: None,
             rename_input,
@@ -293,6 +379,7 @@ impl Shell {
             lang_serial: 0,
             update: UpdateRow::default(),
         };
+        shell.user_name = Self::name_of(&shell.cfg);
         // A probe's vault stands over the remembered one.
         let probing = std::env::var_os("ONYX_VAULT").is_some();
         let vault = std::env::var_os("ONYX_VAULT").map(PathBuf::from).or_else(|| ui.vault.clone());
@@ -334,6 +421,7 @@ impl Shell {
         }
         ui.sidebar_open = Some(self.sidebar_open);
         ui.settings_section = Some(self.settings_section.to_string());
+        ui.wide = self.wide.iter().cloned().collect();
         if std::env::var_os("ONYX_VAULT").is_none() {
             ui.vault = self.vault.as_ref().map(|v| v.root.clone());
             ui.note = self.shown.clone();
@@ -665,6 +753,7 @@ impl Shell {
 
     /// The tab shows, and the keyboard goes to its editor.
     pub(crate) fn show_tab(&mut self, path: &Path, window: &mut Window, cx: &mut Context<Self>) {
+        self.rail_fly_close(cx);
         let Some(tab) = self.tabs.iter().find(|t| t.path == path) else { return };
         self.shown = Some(path.to_path_buf());
         // The note comes up with no caret: the keyboard is the window's
@@ -706,9 +795,18 @@ impl Shell {
     }
 
     /// ⌘W: the tab showing closes; with none, the window.
+    /// ⌘W: the tab showing closes; on the vault's page with tabs still
+    /// open, the page gives way to the tab shown last, or the row's last;
+    /// on the page with none, the window closes.
     fn close_nearest(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         match self.shown.clone() {
             Some(path) => self.close_tab(&path, window, cx),
+            None if !self.tabs.is_empty() => {
+                let back = self.last_shown.clone().filter(|p| self.tabs.iter().any(|t| t.path == *p)).or_else(|| self.tabs.last().map(|t| t.path.clone()));
+                if let Some(back) = back {
+                    self.show_tab(&back, window, cx);
+                }
+            }
             None => {
                 self.save_all(cx);
                 self.save_ui(window);
@@ -1232,35 +1330,129 @@ impl Shell {
         row.into_any_element()
     }
 
-    fn render_sidebar(&self, width: Pixels, cx: &mut Context<Self>) -> AnyElement {
+    /// The sidebar, after emaki's: the brand on the title row, the New
+    /// Note row and the New Folder row, the notes card with the tree,
+    /// and the foot with the person's picture, name and the settings.
+    fn render_sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.frame_theme(cx);
+        let accent = theme.foreground.opacity(0.1);
+        let brand = h_flex().gap(px(5.)).items_center().child(img("icon/icon-128.png").size(px(31.)).flex_shrink_0()).child(crate::widgets::wordmark("Onyx", 23.5, theme.primary, cx));
+        let header = Self::drag_region(h_flex().h(TITLEBAR_H).flex_shrink_0().pt(px(2.) + FRAME).pr(px(16.)).justify_end().items_center().child(brand), cx);
+        let new_row = h_flex()
+            .id("side-new-note")
+            .h(px(36.))
+            .px(px(10.))
+            .gap(px(10.))
+            .rounded(px(8.))
+            .cursor_pointer()
+            .hover(move |s| s.bg(accent.opacity(0.6)))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(cx.listener(|this, _, window, cx| {
+                swallow_click(window, cx);
+                this.new_note(&NewNote, window, cx);
+            }))
+            .child(div().size(px(22.)).rounded_full().bg(theme.primary).flex().items_center().justify_center().child(Icon::default().path("icons/plus.svg").with_size(px(13.)).text_color(theme.primary_foreground)))
+            .child(div().flex_1().text_size(px(13.5)).font_weight(FontWeight::MEDIUM).child(t("New Note")))
+            .child(kbd_hint("⌘N", &theme));
+        let folder_row = h_flex()
+            .id("side-new-folder")
+            .h(px(32.))
+            .px(px(10.))
+            .gap(px(10.))
+            .rounded(px(8.))
+            .cursor_pointer()
+            .hover(move |s| s.bg(accent.opacity(0.6)))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(cx.listener(|this, _, window, cx| {
+                swallow_click(window, cx);
+                this.new_folder(&NewFolder, window, cx);
+            }))
+            .child(div().w(px(22.)).flex().justify_center().child(Icon::default().path("icons/folder-plus.svg").with_size(px(16.)).text_color(theme.muted_foreground)))
+            .child(div().flex_1().text_size(px(13.5)).child(t("New Folder")))
+            .child(kbd_hint("⌘⇧N", &theme));
+        let top = v_flex().px(px(10.)).pt(px(8.)).gap(px(2.)).child(new_row).child(folder_row);
+        let name = self.user_name.clone();
+        let family = crate::fonts::wordmark_family(cx);
+        let footer = h_flex()
+            .flex_shrink_0()
+            .px(px(14.))
+            .py(px(10.))
+            .gap(px(10.))
+            .items_center()
+            .border_t_1()
+            .border_color(accent)
+            .child(
+                self.avatar(28., &theme)
+                    .id("side-avatar")
+                    .cursor_pointer()
+                    .hover(|s| s.opacity(0.85))
+                    .managed_tooltip(|window, cx| tip(t("Your picture and name"), window, cx))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        swallow_click(window, cx);
+                        this.open_settings(Some("appearance"), window, cx);
+                    })),
+            )
+            .child(
+                v_flex().flex_1().min_w_0().child(
+                    div()
+                        .relative()
+                        .text_size(px(16.))
+                        .text_color(theme.foreground)
+                        .font_family(family)
+                        .child(div().truncate().child(name.clone()))
+                        .child(div().absolute().top_0().left(px(0.5)).right(px(-0.5)).truncate().child(name)),
+                ),
+            )
+            .child(
+                div()
+                    .id("settings-gear")
+                    .size(px(26.))
+                    .flex_shrink_0()
+                    .rounded(px(6.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(accent))
+                    .managed_tooltip(|window, cx| tip(t("Settings (⌘,)"), window, cx))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        swallow_click(window, cx);
+                        this.open_settings(None, window, cx);
+                    }))
+                    .child(Icon::new(IconName::Settings).with_size(px(16.)).text_color(theme.muted_foreground)),
+            );
+        v_flex()
+            .w(SIDEBAR_W)
+            .h_full()
+            .flex_shrink_0()
+            .text_color(theme.foreground)
+            .child(header)
+            .when(self.vault.is_some(), |d| d.child(top))
+            .child(self.render_notes_card(&theme, cx))
+            .child(footer)
+            .into_any_element()
+    }
+
+    /// The notes card: the vault's name on its title strip, whose press
+    /// opens the vault's list, and the tree under it. In the sidebar and
+    /// flown out from the rail alike.
+    fn render_notes_card(&self, theme: &gpui_component::Theme, cx: &mut Context<Self>) -> AnyElement {
         let frame = cx.theme().title_bar;
+        let dark = cx.theme().mode.is_dark();
+        let ground = frame.blend(if dark { cx.theme().background.opacity(0.55) } else { theme.foreground.opacity(0.045) });
         self.scrollers.name(&self.side_scroll);
-        let head_button = |id: &'static str, icon: &'static str, label: SharedString, theme: &gpui_component::Theme| {
-            let hover = theme.foreground.opacity(0.1);
-            div()
-                .id(id)
-                .size(px(24.))
-                .rounded(px(6.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .hover(move |s| s.bg(hover))
-                .managed_tooltip(move |window, cx| tip(label.clone(), window, cx))
-                .child(Icon::default().path(icon).with_size(px(15.)).text_color(theme.muted_foreground))
-        };
         let vault_name: SharedString = self.vault.as_ref().map(|v| v.tree.name.clone()).unwrap_or_else(|| t("No vault").to_string()).into();
         let head = h_flex()
             .id("vault-head")
             .h(px(28.))
-            .mx(px(8.))
-            .px(px(8.))
+            .flex_shrink_0()
+            .px(px(14.))
             .gap(px(6.))
             .items_center()
-            .rounded(px(7.))
             .cursor_pointer()
-            .hover(|s| s.bg(theme.foreground.opacity(0.07)))
+            .hover(|s| s.bg(theme.foreground.opacity(0.06)))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(cx.listener(|this, ev: &ClickEvent, window, cx| {
                 swallow_click(window, cx);
@@ -1274,99 +1466,563 @@ impl Shell {
                 this.menus.show("vault", at, entries);
                 cx.notify();
             }))
-            .child(Icon::default().path("icons/folder.svg").with_size(px(15.)).text_color(theme.muted_foreground))
-            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_size(px(13.)).font_weight(FontWeight::MEDIUM).text_color(theme.foreground).child(vault_name))
+            .child(div().flex_1().min_w_0().truncate().text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme.muted_foreground).child(vault_name))
             .child(Icon::default().path("icons/chevrons-up-down.svg").with_size(px(12.)).text_color(theme.muted_foreground));
-        let actions = h_flex()
-            .px(px(14.))
-            .pb(px(6.))
-            .gap(px(2.))
-            .items_center()
-            .child(head_button("side-new-note", "icons/file-plus.svg", t("New Note (⌘N)").into(), &theme).on_click(cx.listener(|this, _, window, cx| {
-                swallow_click(window, cx);
-                this.new_note(&NewNote, window, cx);
-            })))
-            .child(head_button("side-new-folder", "icons/folder-plus.svg", t("New Folder").into(), &theme).on_click(cx.listener(|this, _, window, cx| {
-                swallow_click(window, cx);
-                this.new_folder(&NewFolder, window, cx);
-            })));
-        let rows = self.render_tree(&theme, cx);
+        let rows = self.render_tree(theme, cx);
         let empty = self.vault.as_ref().is_some_and(|v| v.tree.children.is_empty());
-        // The room it takes of the row is `width`; the sidebar keeps its
-        // own width inside it and slides in from the window's edge.
-        div()
-            .w(width)
-            .h_full()
-            .flex_shrink_0()
+        v_flex()
+            .mx(px(8.))
+            .mt(px(10.))
+            .mb(px(8.))
+            .flex_1()
+            .min_h_0()
+            .rounded(px(10.))
+            .border_1()
+            .border_color(theme.foreground.opacity(0.1))
+            .bg(ground)
             .overflow_hidden()
+            .child(head)
             .child(
-                v_flex()
-                    .w(SIDEBAR_W)
-                    .h_full()
-                    .ml(width - SIDEBAR_W)
-                    .pt(TITLEBAR_H + FRAME)
-                    .child(div().px(px(16.)).pb(px(8.)).child(crate::widgets::wordmark("Onyx", 20., theme.primary, cx)))
-                    .child(head)
-                    .when(self.vault.is_some(), |d| d.child(actions))
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
                     .child(
-                        div()
-                            .relative()
-                            .flex_1()
-                            .min_h_0()
-                            .child(
-                                v_flex()
-                                    .id("side-list")
-                                    .size_full()
-                                    .px(px(8.))
-                                    .pb(px(12.))
-                                    .overflow_y_scroll()
-                                    .track_scroll(&self.side_scroll)
-                                    .children(rows)
-                                    .when(empty, |d| d.child(div().px(px(10.)).py(px(8.)).text_size(px(12.)).text_color(theme.muted_foreground).child(t("No notes yet. Make one with the button above.")))),
-                            )
-                            // What is cut says so: the list fades into the
-                            // frame at an edge with more beyond it.
-                            .children(edge_fade(&self.side_scroll, frame, true))
-                            .children(edge_fade(&self.side_scroll, frame, false))
-                            .vertical_scrollbar(&self.side_scroll),
+                        v_flex()
+                            .id("side-list")
+                            .size_full()
+                            .px(px(8.))
+                            .pb(px(12.))
+                            .overflow_y_scroll()
+                            .track_scroll(&self.side_scroll)
+                            .children(rows)
+                            .when(empty, |d| d.child(div().px(px(10.)).py(px(8.)).text_size(px(12.)).text_color(theme.muted_foreground).child(t("No notes yet. Make one with the button above.")))),
                     )
-                    .child(h_flex().h(px(40.)).px(px(16.)).gap(px(8.)).items_center().text_size(px(12.)).text_color(theme.muted_foreground).child(t("Sidebar")).child(div().flex_1()).child(crate::widgets::kbd_hint("⌘⇧B", &theme))),
+                    // What is cut says so: the list fades into the
+                    // card at an edge with more beyond it.
+                    .children(edge_fade(&self.side_scroll, ground, true))
+                    .children(edge_fade(&self.side_scroll, ground, false))
+                    .vertical_scrollbar(&self.side_scroll),
             )
             .into_any_element()
     }
 
-    // -- the strip --------------------------------------------------------------
+    /// The person's picture on a disc, or their initial on the accent.
+    pub(crate) fn avatar(&self, size: f32, theme: &gpui_component::Theme) -> Div {
+        let master = PathBuf::from(&self.cfg.app.avatar);
+        let sized = avatar_sized(&master, size as u32);
+        let path = if sized.is_file() { sized } else { master };
+        let disc = div().size(px(size)).rounded_full().flex_shrink_0().overflow_hidden();
+        if !self.cfg.app.avatar.is_empty() && path.is_file() {
+            return disc.child(img(path).size(px(size)).rounded_full().object_fit(ObjectFit::Cover));
+        }
+        let initial = self.user_name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "O".into());
+        disc.bg(theme.primary).flex().items_center().justify_center().text_size(px(size * 0.46)).font_weight(FontWeight::SEMIBOLD).text_color(theme.primary_foreground).child(initial)
+    }
 
-    /// The buttons beside the traffic lights, drawn once over the window's
-    /// corner, so none moves whether the sidebar is there or not. Their
-    /// centers are on the traffic lights'.
-    fn render_strip(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let over_side = self.side_t() > 0.5;
-        let theme = if over_side { self.frame_theme(cx) } else { cx.theme().clone() };
-        let button = |id: &'static str, icon: IconName, label: SharedString| {
+    /// The name the window calls the person: the settings' own, or the
+    /// account's first name.
+    pub(crate) fn name_of(cfg: &Config) -> String {
+        if cfg.app.user_name.trim().is_empty() { crate::sys::user_first_name() } else { cfg.app.user_name.trim().to_string() }
+    }
+
+    /// Ask for a picture and keep a copy of it as the person's own. The
+    /// copy has a name of its own each time, so the old picture is not
+    /// what the image cache answers with.
+    pub(crate) fn pick_avatar(&mut self, cx: &mut Context<Self>) {
+        let rx = cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some(t("Choose").into()) });
+        cx.spawn(async move |this, cx| {
+            let Ok(Ok(Some(paths))) = rx.await else { return };
+            let Some(from) = paths.into_iter().next() else { return };
+            this.update(cx, |this, cx| {
+                let dir = onyx_core::paths::root().join("avatar");
+                let to = dir.join(format!("{}.png", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)));
+                if let Err(e) = std::fs::create_dir_all(&dir).map_err(|e| e.to_string()).and_then(|_| avatar_keep(&from, &to)) {
+                    this.say(tf("The picture could not be used: {why}", &[("why", &e)]), cx);
+                    return;
+                }
+                this.set_avatar(to.to_string_lossy().to_string(), cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Take that file as the picture, or none; the copy kept before goes.
+    pub(crate) fn set_avatar(&mut self, path: String, cx: &mut Context<Self>) {
+        let old = std::mem::replace(&mut self.cfg.app.avatar, path);
+        if !old.is_empty() && old != self.cfg.app.avatar && PathBuf::from(&old).starts_with(onyx_core::paths::root().join("avatar")) {
+            let old = PathBuf::from(old);
+            for size in AVATAR_SIZES {
+                let _ = std::fs::remove_file(avatar_sized(&old, size));
+            }
+            let _ = std::fs::remove_file(&old);
+        }
+        let avatar = self.cfg.app.avatar.clone();
+        let _ = Config::edit(move |c| c.app.avatar = avatar);
+        cx.notify();
+    }
+
+    /// The person's name as the settings' field has it.
+    pub(crate) fn set_user_name(&mut self, name: String, cx: &mut Context<Self>) {
+        let name = name.trim().to_string();
+        if name == self.cfg.app.user_name {
+            return;
+        }
+        self.cfg.app.user_name = name.clone();
+        self.user_name = Self::name_of(&self.cfg);
+        let _ = Config::edit(move |c| c.app.user_name = name);
+        cx.notify();
+    }
+
+    // -- the rail ------------------------------------------------------------
+
+    /// The sidebar folded: a column at the window's left with the New
+    /// Note button and the notes card's button, and the app's icon and
+    /// the person's picture at its foot. It fades as the sidebar comes.
+    fn render_rail(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let shown = (1. - self.side_t() * 1.6).max(0.);
+        if shown <= 0. {
+            return None;
+        }
+        let theme = self.frame_theme(cx);
+        let accent = theme.foreground.opacity(0.1);
+        let mid = RAIL_W / 2.;
+        let top = RAIL_TOP + (RAIL_ENTRY + RAIL_GAP) * 2. + px(12.);
+        let fly = self.rail_fly.is_some_and(|(_, open)| open);
+        let entry = |id: &'static str, glyph: AnyElement, words: SharedString, active: bool, i: f32| {
+            div()
+                .id(id)
+                .absolute()
+                .left(mid - RAIL_ENTRY / 2.)
+                .top(top + (RAIL_ENTRY + RAIL_GAP) * i)
+                .size(RAIL_ENTRY)
+                .rounded(px(9.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .when(active, |d| d.bg(accent))
+                .hover(move |s| s.bg(accent.opacity(0.6)))
+                .managed_tooltip_at(gpui_component::Placement::Right, move |window, cx| tip(words.clone(), window, cx))
+                // The press is the entry's, not the rail's to move the
+                // window by.
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .child(glyph)
+        };
+        let plus = div().size(px(24.)).rounded_full().bg(theme.primary).flex().items_center().justify_center().child(Icon::default().path("icons/plus.svg").with_size(px(14.)).text_color(theme.primary_foreground)).into_any_element();
+        let notes = Icon::default().path("icons/folder.svg").with_size(px(18.)).text_color(if fly { theme.foreground } else { theme.muted_foreground }).into_any_element();
+        let rule = |y: Pixels| div().absolute().left(mid - px(12.)).top(y).w(px(24.)).h(px(1.)).bg(accent);
+        let mut rail = Self::drag_region(div(), cx).absolute().top_0().left_0().h_full().w(RAIL_W).opacity(shown);
+        if self.vault.is_some() {
+            rail = rail
+                .child(rule(top - px(7.)))
+                .child(entry("rail-new", plus, t("New Note (⌘N)").into(), false, 0.).on_click(cx.listener(|this, _, window, cx| {
+                    swallow_click(window, cx);
+                    this.new_note(&NewNote, window, cx);
+                })))
+                .child(entry("rail-notes", notes, t("Notes").into(), fly, 1.).on_click(cx.listener(|this, _, window, cx| {
+                    swallow_click(window, cx);
+                    this.rail_fly_toggle(cx);
+                })));
+        }
+        rail = rail.child(img("icon/icon-128.png").absolute().left(mid - px(16.)).bottom(px(60.)).size(px(32.))).child(
+            self.avatar(28., &theme)
+                .id("rail-avatar")
+                .absolute()
+                .left(mid - px(14.))
+                .bottom(px(18.))
+                .cursor_pointer()
+                .hover(|s| s.opacity(0.85))
+                .managed_tooltip_at(gpui_component::Placement::Right, |window, cx| tip(t("Your picture and name"), window, cx))
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, _| this.press_taken = true))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    swallow_click(window, cx);
+                    this.open_settings(Some("appearance"), window, cx);
+                })),
+        );
+        Some(rail.into_any_element())
+    }
+
+    fn rail_fly_toggle(&mut self, cx: &mut Context<Self>) {
+        let open = !self.rail_fly.is_some_and(|(_, open)| open);
+        self.rail_fly = Some((Instant::now(), open));
+        cx.notify();
+    }
+
+    fn rail_fly_close(&mut self, cx: &mut Context<Self>) {
+        if self.rail_fly.is_some_and(|(_, open)| open) {
+            self.rail_fly = Some((Instant::now(), false));
+            cx.notify();
+        }
+    }
+
+    /// The notes card flown out beside the rail, over the page, for a
+    /// note picked without the sidebar; a press beside it lets it go.
+    fn render_rail_fly(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (at, open) = self.rail_fly?;
+        let done = at.elapsed() >= SLIDE;
+        if !open && done {
+            return None;
+        }
+        if !done {
+            window.request_animation_frame();
+        }
+        let t = ease_out_quint()((at.elapsed().as_secs_f32() / SLIDE.as_secs_f32()).min(1.));
+        let shown = if open { t } else { 1. - t };
+        let theme = self.frame_theme(cx);
+        let frame = cx.theme().title_bar;
+        let dark = cx.theme().mode.is_dark();
+        let shadow = vec![BoxShadow { color: gpui::black().opacity(if dark { 0.5 } else { 0.18 }), offset: point(px(0.), px(8.)), blur_radius: px(28.), spread_radius: px(-6.), inset: false }];
+        let scrim = open.then(|| {
+            div().id("rail-fly-scrim").absolute().inset_0().occlude().on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    swallow_click(window, cx);
+                    this.rail_fly_close(cx);
+                }),
+            )
+        });
+        Some(
+            div()
+                .absolute()
+                .inset_0()
+                .children(scrim)
+                .child(
+                    div()
+                        .id("rail-fly")
+                        .absolute()
+                        .left(RAIL_W + px(4.) - px(12.) * (1. - shown))
+                        .top(FLY_TOP)
+                        .bottom(FRAME * 2.)
+                        .w(SIDEBAR_W)
+                        .rounded(px(12.))
+                        .overflow_hidden()
+                        .bg(frame)
+                        .border_1()
+                        .border_color(theme.foreground.opacity(0.1))
+                        .shadow(shadow)
+                        .occlude()
+                        .opacity(shown)
+                        .text_color(theme.foreground)
+                        .child(v_flex().size_full().child(self.render_notes_card(&theme, cx))),
+                )
+                .into_any_element(),
+        )
+    }
+
+    // -- the search and the find bar ----------------------------------------
+
+    pub(crate) fn toggle_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.search_open {
+            self.close_search(window, cx)
+        } else {
+            self.open_search(window, cx)
+        }
+    }
+
+    fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.vault.is_none() {
+            return;
+        }
+        self.search_open = true;
+        self.search_input.update(cx, |s, cx| {
+            s.focus(window, cx);
+            s.select_all(window, cx);
+        });
+        cx.notify();
+    }
+
+    fn close_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.search_open = false;
+        self.focus_editor_or_shell(window, cx);
+        cx.notify();
+    }
+
+    /// The phrase typed looked for in every note, off the main thread;
+    /// a search still running when the next is asked is dropped.
+    fn run_search(&mut self, cx: &mut Context<Self>) {
+        let q = self.search_input.read(cx).value().to_string();
+        let Some(root) = self.vault_root().map(Path::to_path_buf) else { return };
+        if q.trim().is_empty() {
+            self.search_results = None;
+            cx.notify();
+            return;
+        }
+        let task = cx.background_spawn(async move { onyx_core::search::search(&root, &q, SEARCH_LINES) });
+        self.search_task = Some(cx.spawn(async move |this, cx| {
+            let res = task.await;
+            this.update(cx, |this, cx| {
+                this.search_results = Some(res);
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    /// A note the search found, opened with the phrase in its find bar.
+    fn open_found(&mut self, path: PathBuf, query: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_search(window, cx);
+        self.open_note(path, window, cx);
+        let query = query.to_string();
+        self.find_input.update(cx, |s, cx| s.set_value(query, window, cx));
+        self.find_open = true;
+        self.run_find(cx);
+        cx.notify();
+    }
+
+    pub(crate) fn find_in_note(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.find_open && self.find_input.read(cx).focus_handle(cx).is_focused(window) {
+            self.close_find(window, cx)
+        } else {
+            self.open_find(window, cx)
+        }
+    }
+
+    fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.shown.is_none() {
+            return;
+        }
+        self.find_open = true;
+        self.find_input.update(cx, |s, cx| {
+            s.focus(window, cx);
+            s.select_all(window, cx);
+        });
+        self.run_find(cx);
+        cx.notify();
+    }
+
+    pub(crate) fn close_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.find_open = false;
+        if let Some(editor) = self.shown_editor() {
+            editor.update(cx, |e, cx| e.clear_find(cx));
+        }
+        self.focus_editor_or_shell(window, cx);
+        cx.notify();
+    }
+
+    fn run_find(&mut self, cx: &mut Context<Self>) {
+        let q = self.find_input.read(cx).value().to_string();
+        if let Some(editor) = self.shown_editor() {
+            editor.update(cx, |e, cx| e.set_find(&q, cx));
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn find_step(&mut self, delta: i64, cx: &mut Context<Self>) {
+        if !self.find_open {
+            return;
+        }
+        if let Some(editor) = self.shown_editor() {
+            editor.update(cx, |e, cx| e.find_step(delta, cx));
+        }
+        cx.notify();
+    }
+
+    fn render_search(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        self.scrollers.name(&self.search_scroll);
+        let theme = cx.theme().clone();
+        let focus = self.search_input.read(cx).focus_handle(cx);
+        let results = self.search_results.clone();
+        let mut snippet_style = window.text_style();
+        snippet_style.font_size = px(11.5).into();
+        snippet_style.color = theme.muted_foreground;
+        let mark = HighlightStyle { color: Some(theme.foreground), background_color: Some(theme.warning.opacity(0.35)), ..Default::default() };
+        div()
+            .id("search-overlay")
+            .absolute()
+            .inset_0()
+            .occlude()
+            .bg(theme.overlay)
+            .flex()
+            .flex_col()
+            .items_center()
+            .pt(px(80.))
+            .on_click(cx.listener(|this, _, window, cx| this.close_search(window, cx)))
+            .child(
+                v_flex()
+                    .id("search-panel")
+                    .occlude()
+                    .key_context(SEARCH_CONTEXT)
+                    .on_action(cx.listener(|this, _: &Escape, window, cx| {
+                        cx.stop_propagation();
+                        this.close_search(window, cx)
+                    }))
+                    .on_click(|_, window, cx| swallow_click(window, cx))
+                    .w(px(680.))
+                    .max_w(relative(0.94))
+                    .max_h(px(520.))
+                    .rounded(px(18.))
+                    .bg(theme.popover)
+                    .border_1()
+                    .border_color(theme.border)
+                    .shadow(float_shadow(&theme))
+                    .child(
+                        h_flex()
+                            .px(px(16.))
+                            .h(px(50.))
+                            .flex_shrink_0()
+                            .gap(px(10.))
+                            .items_center()
+                            .border_b_1()
+                            .border_color(theme.border)
+                            .child(Icon::default().path("icons/search.svg").with_size(px(16.)).text_color(theme.muted_foreground))
+                            .child(div().id("search-field").track_focus(&focus).flex_1().min_w_0().text_size(px(14.)).child(Input::new(&self.search_input).appearance(false).bordered(false))),
+                    )
+                    .child(
+                        v_flex().relative().flex_1().min_h_0().pb(px(8.)).vertical_scrollbar(&self.search_scroll).child(v_flex().id("search-results").flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.search_scroll).px(px(8.)).pt(px(8.)).map(|d| match results {
+                            None => d.child(div().p(px(12.)).text_size(px(12.5)).text_color(theme.muted_foreground).child(t("Type to search every note's name and words."))),
+                            Some(res) if res.notes.is_empty() => d.child(div().p(px(12.)).text_size(px(12.5)).text_color(theme.muted_foreground).child(t("No matches."))),
+                            Some(res) => d.children(res.notes.into_iter().take(40).enumerate().map(|(i, n)| {
+                                let query = res.query.clone();
+                                let path = n.path.clone();
+                                let where_ = if n.folder.is_empty() { crate::i18n::count(n.hits, "{n} hit", "{n} hits") } else { format!("{} · {}", n.folder, crate::i18n::count(n.hits, "{n} hit", "{n} hits")) };
+                                let style = snippet_style.clone();
+                                v_flex()
+                                    .id(("hit", i))
+                                    .px(px(12.))
+                                    .py(px(8.))
+                                    .gap(px(3.))
+                                    .rounded(px(10.))
+                                    .cursor_pointer()
+                                    .hover(|st| st.bg(theme.list_hover))
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        swallow_click(window, cx);
+                                        this.open_found(path.clone(), &query, window, cx);
+                                    }))
+                                    .child(h_flex().gap(px(8.)).child(div().flex_1().min_w_0().truncate().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child(n.title.clone())).child(div().flex_shrink_0().text_size(px(11.)).text_color(theme.muted_foreground).child(where_)))
+                                    .children(n.snippets.into_iter().map(|sn| {
+                                        let marks: Vec<(std::ops::Range<usize>, HighlightStyle)> = sn.marks.into_iter().map(|r| (r, mark)).collect();
+                                        div().w_full().overflow_hidden().whitespace_nowrap().child(StyledText::new(sn.text).with_default_highlights(&style, marks))
+                                    }))
+                            })),
+                        })),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    /// The find bar over the note: the phrase, how many of it and which
+    /// one, and the way to the next and the one before.
+    fn render_find_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme().clone();
+        let focus = self.find_input.read(cx).focus_handle(cx);
+        let (n, at) = self.shown_editor().map(|e| {
+            let e = e.read(cx);
+            (e.find_count(), e.find_at())
+        }).unwrap_or((0, 0));
+        let empty = self.find_input.read(cx).value().trim().is_empty();
+        let count = if empty {
+            String::new()
+        } else if n == 0 {
+            t("no matches").to_string()
+        } else {
+            tf("{n} of {total}", &[("n", &(at + 1)), ("total", &n)])
+        };
+        let button = |id: &'static str, icon: &'static str, label: SharedString| {
             let hover = theme.foreground.opacity(0.07);
             div()
                 .id(id)
-                .size(STRIP_BTN)
-                .rounded(px(6.))
+                .size(px(22.))
+                .flex_shrink_0()
+                .rounded(px(5.))
                 .flex()
                 .items_center()
                 .justify_center()
                 .cursor_pointer()
                 .hover(move |s| s.bg(hover))
                 .managed_tooltip(move |window, cx| tip(label.clone(), window, cx))
-                .child(Icon::new(icon).with_size(px(16.)).text_color(theme.muted_foreground))
+                .child(Icon::default().path(icon).with_size(px(14.)).text_color(theme.muted_foreground))
         };
-        let left = if cfg!(target_os = "macos") { TRAFFIC_W } else { px(10.) };
         h_flex()
+            .w_full()
+            .justify_center()
+            .px(px(24.))
+            .py(px(8.))
+            .child(
+                h_flex()
+                    .id("find-bar")
+                    .key_context(FIND_CONTEXT)
+                    .on_action(cx.listener(|this, _: &Escape, window, cx| {
+                        cx.stop_propagation();
+                        this.close_find(window, cx)
+                    }))
+                    .w_full()
+                    .max_w(READABLE_W)
+                    .h(px(36.))
+                    .px(px(10.))
+                    .gap(px(8.))
+                    .items_center()
+                    .rounded(px(10.))
+                    .border_1()
+                    .border_color(theme.border)
+                    .bg(theme.popover)
+                    .shadow_sm()
+                    .child(Icon::default().path("icons/search.svg").with_size(px(14.)).text_color(theme.muted_foreground))
+                    .child(div().id("find-field").track_focus(&focus).flex_1().min_w_0().text_size(px(13.)).child(Input::new(&self.find_input).appearance(false).bordered(false)))
+                    .child(div().text_size(px(11.5)).flex_shrink_0().text_color(if n == 0 && !empty { theme.danger } else { theme.muted_foreground }).child(count))
+                    .child(button("find-prev", "icons/chevron-up.svg", t("Previous (⇧↩)").into()).on_click(cx.listener(|this, _, window, cx| {
+                        swallow_click(window, cx);
+                        this.find_step(-1, cx)
+                    })))
+                    .child(button("find-next", "icons/chevron-down.svg", t("Next (↩)").into()).on_click(cx.listener(|this, _, window, cx| {
+                        swallow_click(window, cx);
+                        this.find_step(1, cx)
+                    })))
+                    .child(button("find-close", "icons/close.svg", t("Close (Esc)").into()).on_click(cx.listener(|this, _, window, cx| {
+                        swallow_click(window, cx);
+                        this.close_find(window, cx)
+                    }))),
+            )
+            .into_any_element()
+    }
+
+    // -- the strip --------------------------------------------------------------
+
+    /// The sidebar's button and the search's, drawn once over the window:
+    /// beside the traffic lights on the sidebar's title row while the
+    /// sidebar is there, and at the rail's head, a size larger, while it
+    /// is folded; between the two they slide on a line.
+    fn render_strip(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = self.frame_theme(cx);
+        let k = self.side_t();
+        let size = STRIP_BTN + (RAIL_ENTRY - STRIP_BTN) * (1. - k);
+        let beside = k < 0.5;
+        let button = |id: &'static str, icon: &'static str, label: SharedString| {
+            let hover = theme.foreground.opacity(0.07);
+            div()
+                .id(id)
+                .size(size)
+                .rounded(px(6.) + px(2.) * (1. - k))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, _| this.press_taken = true))
+                .hover(move |s| s.bg(hover))
+                .map(|d| if beside { d.managed_tooltip_at(gpui_component::Placement::Right, move |window, cx| tip(label.clone(), window, cx)) } else { d.managed_tooltip(move |window, cx| tip(label.clone(), window, cx)) })
+                .child(Icon::default().path(icon).with_size(px(16.) + px(2.) * (1. - k)).text_color(theme.muted_foreground))
+        };
+        let row_y = px(1.) + FRAME / 2. + (TITLEBAR_H - STRIP_BTN) / 2.;
+        let rail_x = RAIL_W / 2. - RAIL_ENTRY / 2.;
+        let strip_left = if cfg!(target_os = "macos") { TRAFFIC_W + px(2.) } else { px(10.) };
+        let at = |i: f32| {
+            let (x, y) = (strip_left + STRIP_BTN * i, row_y);
+            let (rx, ry) = (rail_x, RAIL_TOP + (RAIL_ENTRY + RAIL_GAP) * i);
+            (rx + (x - rx) * k, ry + (y - ry) * k)
+        };
+        let ((sx, sy), (qx, qy)) = (at(0.), at(1.));
+        div()
             .absolute()
-            .top(px(1.) + FRAME / 2.)
-            .left(left)
-            .h(TITLEBAR_H)
-            .items_center()
-            .child(button("strip-sidebar", IconName::PanelLeft, t("Sidebar (⌘⇧B)").into()).on_click(cx.listener(|this, _, window, cx| {
+            .top_0()
+            .left_0()
+            .child(button("strip-sidebar", "icons/panel-left.svg", t("Sidebar (⌘⇧B)").into()).absolute().left(sx).top(sy).on_click(cx.listener(|this, _, window, cx| {
                 swallow_click(window, cx);
                 this.toggle_sidebar(window, cx)
+            })))
+            .child(button("strip-search", "icons/search.svg", t("Search (⌘K)").into()).absolute().left(qx).top(qy).on_click(cx.listener(|this, _, window, cx| {
+                swallow_click(window, cx);
+                this.open_search(window, cx)
             })))
     }
 
@@ -1397,36 +2053,113 @@ impl Shell {
         }))
     }
 
-    /// The right end of the strip: how the note is shown, and the settings.
-    fn render_strip_right(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// The vault's page, with every tab left open.
+    pub(crate) fn show_home(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.shown.is_none() {
+            return;
+        }
+        self.last_shown = self.shown.take();
+        self.find_open = false;
+        window.focus(&self.focus, cx);
+        self.save_ui(window);
+        cx.notify();
+    }
+
+    /// The bar under the strip, after emaki's path line: at the left the
+    /// note's name with its folder before it, from the vault's name, or
+    /// the vault's own place while its page shows, each a press away from
+    /// the file manager; at the right how the note is shown and how wide.
+    fn render_path_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let root = self.vault_root()?.to_path_buf();
         let theme = cx.theme().clone();
-        let mode = self.mode;
-        let modes = self.motion.segmented(
+        let (icon, parents, name, target) = match &self.shown {
+            Some(path) => {
+                let folder = path.parent().and_then(|d| d.strip_prefix(&root).ok()).map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+                let vault = root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let parents = if folder.is_empty() { format!("{vault}/") } else { format!("{vault}/{folder}/") };
+                ("icons/file-text.svg", parents, vault::title(path), path.clone())
+            }
+            None => {
+                let shown = crate::sys::short_path(&root);
+                let (parents, name) = match shown.rfind('/') {
+                    Some(at) => (shown[..at + 1].to_string(), shown[at + 1..].to_string()),
+                    None => (String::new(), shown),
+                };
+                ("icons/folder.svg", parents, name, root.clone())
+            }
+        };
+        let hover_bg = theme.muted;
+        let chip = h_flex()
+            .id("path-chip")
+            .max_w_full()
+            .min_w_0()
+            .h(px(22.))
+            .px(px(8.))
+            .gap(px(6.))
+            .items_center()
+            .rounded(px(6.))
+            .cursor_pointer()
+            .hover(move |s| s.bg(hover_bg))
+            .font_family(self.look.mono_family.clone())
+            .text_size(px(11.))
+            .managed_tooltip(|window, cx| tip(t(crate::sys::REVEAL_LABEL), window, cx))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(cx.listener(move |_, _, window, cx| {
+                swallow_click(window, cx);
+                crate::sys::reveal(&target);
+            }))
+            .child(Icon::default().path(icon).with_size(px(12.)).text_color(theme.muted_foreground).flex_shrink_0())
+            .child(h_flex().min_w_0().child(div().min_w_0().truncate().text_color(theme.muted_foreground).child(parents)).child(div().flex_shrink_0().font_weight(FontWeight::MEDIUM).text_color(theme.foreground).child(name)));
+        Some(
+            h_flex()
+                .w_full()
+                .h(px(34.))
+                .flex_shrink_0()
+                // The squares stand 6 from the bar's ends, as they do
+                // from its hairlines above and below.
+                .px(px(6.))
+                .gap(px(10.))
+                .items_center()
+                .bg(theme.muted.opacity(0.3))
+                .border_t_1()
+                .border_b_1()
+                .border_color(theme.border)
+                // Both ends as wide as the wider group, so the path keeps
+                // one center line whether a note shows or not.
+                .child(h_flex().min_w(BAR_END).flex_shrink_0().items_center().when(self.shown.is_some(), |d| d.child(self.render_mode_group(cx))))
+                .child(h_flex().flex_1().min_w_0().justify_center().child(chip))
+                .child(h_flex().min_w(BAR_END).flex_shrink_0().justify_end().items_center().when(self.shown.is_some(), |d| d.child(self.render_width_group(cx))))
+                .into_any_element(),
+        )
+    }
+
+    /// How the note is shown, three squares in a group at the bar's
+    /// left, each in its own color: the pencil in amber, the source in
+    /// blue, the book in green.
+    fn render_mode_group(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme().clone();
+        let modes = self.motion.segmented_tinted(
             "mode",
-            vec![("live", "icons/pencil-simple.svg", t("Edit (⌥1)").into()), ("source", "icons/file-code.svg", t("Source (⌥2)").into()), ("reading", "icons/book-open.svg", t("Read (⌥3)").into())],
-            mode.key(),
-            false,
-            true,
+            vec![("live", "icons/pencil-simple.svg", t("Edit (⌥1)").into(), theme.warning), ("source", "icons/file-code.svg", t("Source (⌥2)").into(), theme.info), ("reading", "icons/book-open.svg", t("Read (⌥3)").into(), theme.success)],
+            self.mode.key(),
             Rc::new(|this: &mut Self, key, window, cx| this.set_mode(Mode::from_key(key), window, cx)),
             cx,
         );
-        let settings = div()
-            .id("strip-settings")
-            .size(STRIP_BTN)
-            .rounded(px(6.))
-            .flex()
-            .items_center()
-            .justify_center()
-            .cursor_pointer()
-            .hover(|s| s.bg(theme.foreground.opacity(0.07)))
-            .managed_tooltip(|window, cx| tip(t("Settings (⌘,)"), window, cx))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(cx.listener(|this, _, window, cx| {
-                swallow_click(window, cx);
-                this.open_settings(None, window, cx)
-            }))
-            .child(Icon::new(IconName::Settings).with_size(px(16.)).text_color(theme.muted_foreground));
-        h_flex().gap(px(10.)).items_center().when(self.shown.is_some(), |d| d.child(div().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).child(modes))).child(settings)
+        div().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).child(modes).into_any_element()
+    }
+
+    /// How wide the note runs, Normal or Wide, a group of two at the
+    /// bar's right in the accent.
+    fn render_width_group(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme().clone();
+        let widths = self.motion.segmented_tinted(
+            "width",
+            vec![("normal", "icons/viewport-narrow.svg", t("Normal width").into(), theme.primary), ("wide", "icons/viewport-wide.svg", t("Wide").into(), theme.primary)],
+            if self.shown_wide() { "wide" } else { "normal" },
+            Rc::new(|this: &mut Self, key, window, cx| this.set_wide(key == "wide", window, cx)),
+            cx,
+        );
+        div().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).child(widths).into_any_element()
     }
 
     pub(crate) fn set_mode(&mut self, mode: Mode, window: &mut Window, cx: &mut Context<Self>) {
@@ -1437,8 +2170,54 @@ impl Shell {
         let mut ui = UiState::load();
         ui.mode = Some(mode.key().to_string());
         ui.save_later();
-        self.focus_editor_or_shell(window, cx);
+        // The keyboard stays where it is: a caret placed stays, and a
+        // note left by a click in the margin keeps reading whole.
+        let _ = window;
         cx.notify();
+    }
+
+    /// How wide the note showing runs: Normal, a comfortable line of
+    /// reading, or Wide, to the page's edges. Each note's own, and kept.
+    pub(crate) fn set_wide(&mut self, wide: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(path) = self.shown.clone() else { return };
+        if wide == self.wide.contains(&path) {
+            return;
+        }
+        // From as far as a move the other way had got, so a second press
+        // while it moves turns it back without a jump.
+        let begun = match &self.wide_anim {
+            Some((p, _, at)) if *p == path && at.elapsed() < SLIDE => Instant::now() - (SLIDE - at.elapsed()),
+            _ => Instant::now(),
+        };
+        if wide {
+            self.wide.insert(path.clone());
+        } else {
+            self.wide.remove(&path);
+        }
+        self.wide_anim = Some((path, wide, begun));
+        self.save_ui(window);
+        cx.notify();
+    }
+
+    pub(crate) fn shown_wide(&self) -> bool {
+        self.shown.as_ref().is_some_and(|p| self.wide.contains(p))
+    }
+
+    /// How far a note's column is toward Wide, from 0 to 1, eased on
+    /// the window's clock while it moves.
+    fn wide_t(&self, path: &Path) -> f32 {
+        let rest = if self.wide.contains(path) { 1. } else { 0. };
+        match &self.wide_anim {
+            Some((p, to, at)) if p == path && at.elapsed() < SLIDE => {
+                let t = ease_out_quint()(at.elapsed().as_secs_f32() / SLIDE.as_secs_f32());
+                if *to { t } else { 1. - t }
+            }
+            _ => rest,
+        }
+    }
+
+    fn width_moving(&self) -> bool {
+        self.wide_anim.as_ref().is_some_and(|(p, _, at)| at.elapsed() < SLIDE && self.shown.as_deref() == Some(p.as_path()))
     }
 
     // -- the page ---------------------------------------------------------------
@@ -1646,8 +2425,15 @@ impl Shell {
             .child(pen_part("icons/home/pen-slit.svg", paper))
     }
 
+    /// The note as a sheet on the page: a column of the card's ground
+    /// with a hairline round it, on a tint of the muted shade with
+    /// `SHEET_MARGIN` of it showing round the sheet, so the words' room
+    /// and the margins read apart. Normal, the sheet is `READABLE_W`
+    /// wide, centered; Wide, it runs to the page's edges less the
+    /// margin, with more room inside it for the words; between the two
+    /// it eases over `SLIDE`, the words wrapping as it goes.
     fn render_note(&mut self, editor: Entity<Editor>, path: &Path, cx: &mut Context<Self>) -> AnyElement {
-        let readable = self.cfg.editor.readable_width;
+        let t = self.wide_t(path);
         let scroll = editor.read(cx).scroll.clone();
         self.scrollers.name(&scroll);
         let theme = cx.theme().clone();
@@ -1655,9 +2441,33 @@ impl Shell {
         let text_px = self.cfg.editor.text_sizes().note;
         let family = self.look.text_family.clone();
         let title_font = Font { family: family.clone(), features: FontFeatures::default(), fallbacks: self.look.text_fallbacks.clone(), weight: FontWeight::BOLD, style: FontStyle::Normal };
+        let ground = theme.background.blend(theme.muted.opacity(0.3));
+        // The page's width is read as it is painted; before the first
+        // paint the sheet is Normal's width.
+        let page_w = self.page_w.get();
+        let full = (page_w - 2. * f32::from(SHEET_MARGIN)).max(f32::from(READABLE_W));
+        let sheet_w = f32::from(READABLE_W) + (full - f32::from(READABLE_W)) * t;
+        let gutter = SHEET_GUTTER.0 + (SHEET_GUTTER.1 - SHEET_GUTTER.0) * t;
+        let page_w = self.page_w.clone();
+        let entity = cx.entity().downgrade();
         div()
             .relative()
             .size_full()
+            .bg(ground)
+            .child(
+                canvas(
+                    move |bounds, _, cx| {
+                        let w = f32::from(bounds.size.width);
+                        if (page_w.get() - w).abs() > 0.5 {
+                            page_w.set(w);
+                            let _ = entity.update(cx, |_, cx| cx.notify());
+                        }
+                    },
+                    |_, _, _, _| (),
+                )
+                .absolute()
+                .size_full(),
+            )
             .child(
                 // A press in the margin, off the words, takes the keyboard
                 // out of the editor: the note reads whole, with no caret.
@@ -1666,20 +2476,27 @@ impl Shell {
                     window.focus(&this.focus, cx);
                     cx.notify();
                 })).child(
-                    v_flex()
-                        .when(readable, |d| d.w(READABLE_W).max_w_full())
-                        .when(!readable, |d| d.w_full())
-                        .mx_auto()
-                        .px(px(32.))
-                        .pt(px(18.))
-                        .pb(px(120.))
-                        .gap(px(10.))
-                        // The note's name over its words, in the words' face.
-                        .child(div().font(title_font).text_size(px(text_px * 1.8)).line_height(relative(1.25)).text_color(theme.foreground).child(title))
-                        .child(editor),
+                    v_flex().min_h_full().p(SHEET_MARGIN).child(
+                        v_flex()
+                            .flex_1()
+                            .w(px(sheet_w))
+                            .max_w_full()
+                            .mx_auto()
+                            .rounded(px(10.))
+                            .border_1()
+                            .border_color(theme.border)
+                            .bg(theme.background)
+                            .px(px(gutter))
+                            .pt(px(22.))
+                            .pb(px(120.))
+                            .gap(px(10.))
+                            // The note's name over its words, in the words' face.
+                            .child(div().font(title_font).text_size(px(text_px * 1.8)).line_height(relative(1.25)).text_color(theme.foreground).child(title))
+                            .child(editor),
+                    ),
                 ),
             )
-            .children(edge_fade(&scroll, theme.background, true))
+            .children(edge_fade(&scroll, ground, true))
             .vertical_scrollbar(&scroll)
             .into_any_element()
     }
@@ -1944,6 +2761,47 @@ impl Shell {
 
 /// A fade at a scroller's top or foot, there while there is more that way.
 /// It comes and goes with the scroll, which draws the view at each step.
+/// The sizes the person's picture is drawn at, in points: the sidebar's
+/// foot and the rail, and the settings row.
+const AVATAR_SIZES: [u32; 2] = [28, 40];
+
+/// Where the copy of the picture made for one of those sizes is kept:
+/// beside the picture, `<name>@<size>.png`.
+fn avatar_sized(master: &Path, size: u32) -> PathBuf {
+    let stem = master.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    master.with_file_name(format!("{stem}@{size}.png"))
+}
+
+/// Keep `from` as the person's picture at `to`: turned the way its
+/// camera says, cut to the square at its middle, 512 pixels a side, and
+/// with it a copy for each size it is drawn at. (After emaki's.)
+fn avatar_keep(from: &Path, to: &Path) -> Result<(), String> {
+    use image::ImageDecoder as _;
+    let err = |e: image::ImageError| e.to_string();
+    let mut decoder = image::ImageReader::open(from).map_err(|e| e.to_string())?.with_guessed_format().map_err(|e| e.to_string())?.into_decoder().map_err(err)?;
+    let turn = decoder.orientation().unwrap_or(image::metadata::Orientation::NoTransforms);
+    let mut picture = image::DynamicImage::from_decoder(decoder).map_err(err)?;
+    picture.apply_orientation(turn);
+    let side = picture.width().min(picture.height());
+    let square = picture.crop_imm((picture.width() - side) / 2, (picture.height() - side) / 2, side, side);
+    let master = if side > 512 { square.resize_exact(512, 512, image::imageops::FilterType::Lanczos3) } else { square };
+    master.save(to).map_err(err)?;
+    avatar_sizes(to)
+}
+
+/// The copies of the picture at the sizes it is drawn at, each twice the
+/// points across for a dense screen and scaled down with a filter that
+/// averages: handed the whole picture, the GPU samples a few of its
+/// pixels for each one it draws, and a photograph came out jagged.
+fn avatar_sizes(master: &Path) -> Result<(), String> {
+    let picture = image::open(master).map_err(|e| e.to_string())?;
+    for size in AVATAR_SIZES {
+        let px = size * 2;
+        picture.resize_to_fill(px, px, image::imageops::FilterType::Lanczos3).save(avatar_sized(master, size)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 fn edge_fade(handle: &ScrollHandle, ground: Hsla, top: bool) -> Option<AnyElement> {
     let (at, most) = (-handle.offset().y, handle.max_offset().y);
     let more = if top { at > px(1.) } else { at < most - px(1.) };
@@ -1995,14 +2853,15 @@ impl Render for Shell {
             self.ground.set(Some(frame));
             crate::sys::set_window_ground(window, frame.to_rgb());
         }
-        if self.sidebar_moving() {
+        if self.sidebar_moving() || self.width_moving() {
             window.request_animation_frame();
         }
         let t_side = self.side_t();
-        let side_w = SIDEBAR_W * t_side;
-        // The strip leaves room for the traffic lights and its button while
-        // the sidebar is away, in proportion to the same clock.
-        let strip_room = (if cfg!(target_os = "macos") { TRAFFIC_W } else { px(10.) } + STRIP_BTN + px(8.)) * (1. - t_side);
+        // The sidebar's room in the row, and the lights' place: in gpui's
+        // row on the sidebar's title row, a column at the rail's head.
+        let side_w = (SIDEBAR_W * t_side).round();
+        crate::sys::fold_lights(window, t_side, f32::from(RAIL_W / 2.));
+        let side_shown = ((t_side - 0.375) / 0.625).clamp(0., 1.);
         // The tabs, their widths set for this draw; a frame more while
         // any of them moves.
         let items: Vec<TabItem> = self.tabs.iter().map(|t| TabItem { path: t.path.clone(), title: vault::title(&t.path), dirty: t.dirty }).collect();
@@ -2011,9 +2870,13 @@ impl Render for Shell {
             window.request_animation_frame();
         }
         let root = self.vault_root().map(Path::to_path_buf);
+        // No tab, no row: the plus alone on the strip said nothing.
         let center = if items.is_empty() { div().flex_1().min_w_0().into_any_element() } else { self.tabs_row.render(&items, self.shown.as_deref(), root.as_deref(), cx) };
         let notice = self.notice.as_ref().map(|(w, _)| w.clone());
-        let right = self.render_strip_right(cx);
+        let path_bar = self.render_path_bar(cx);
+        let find_bar = (self.find_open && self.shown.is_some()).then(|| {
+            div().w_full().flex_shrink_0().overflow_hidden().child(self.render_find_bar(cx)).with_animation("find-bar-in", Animation::new(crate::widgets::MENU_IN).with_easing(ease_out_quint()), |d, t| if t >= 1. { d } else { d.max_h(px(64. * t)).opacity(t) })
+        });
         let page = self.render_page(cx);
         let card = v_flex()
             .flex_1()
@@ -2023,12 +2886,10 @@ impl Render for Shell {
             .bg(theme.background)
             .text_color(theme.foreground)
             .overflow_hidden()
-            .child(
-                Self::drag_region(h_flex().h(TITLEBAR_H - FRAME).flex_shrink_0().pl(strip_room + px(12.)).pr(px(12.)).items_center().gap(px(8.)), cx)
-                    .child(center)
-                    .child(right),
-            )
+            .child(Self::drag_region(h_flex().h(TITLEBAR_H - FRAME).flex_shrink_0().px(STRIP_PAD).items_center().gap(px(6.)), cx).child(center))
+            .children(path_bar)
             .children(notice.map(|words| div().px(px(16.)).py(px(6.)).text_size(px(12.5)).text_color(theme.danger).child(words)))
+            .children(find_bar)
             .child(div().relative().flex_1().min_h_0().child(page));
         let pick = Rc::new(|this: &mut Self, what: &'static str, id: SharedString, window: &mut Window, cx: &mut Context<Self>| this.menu_pick(what, id, window, cx));
         let close = Rc::new(|this: &mut Self, cx: &mut Context<Self>| {
@@ -2038,6 +2899,10 @@ impl Render for Shell {
         });
         let menu = if self.menus.open.as_ref().is_some_and(|m| m.what == "entry" || m.what == "vault") || self.menus.gone.as_ref().is_some_and(|(m, _)| m.what == "entry" || m.what == "vault") { self.menus.render(pick, close, cx) } else { None };
         let sheet = self.render_new_vault(cx).or_else(|| self.render_rename(cx));
+        let search = self.search_open.then(|| self.render_search(window, cx));
+        let rail = self.render_rail(cx);
+        let fly = self.render_rail_fly(window, cx);
+        let strip = self.render_strip(cx);
         let this = cx.entity().downgrade();
         let ambient = self.ambient.clone();
         crate::editor::stamp("shell render ends");
@@ -2074,6 +2939,12 @@ impl Render for Shell {
                 let mode = if this.mode == Mode::Reading { Mode::Live } else { Mode::Reading };
                 this.set_mode(mode, window, cx)
             }))
+            .on_action(cx.listener(|this, _: &ShowNormal, window, cx| this.set_wide(false, window, cx)))
+            .on_action(cx.listener(|this, _: &ShowWide, window, cx| this.set_wide(true, window, cx)))
+            .on_action(cx.listener(|this, _: &ToggleSearch, window, cx| this.toggle_search(window, cx)))
+            .on_action(cx.listener(|this, _: &FindInNote, window, cx| this.find_in_note(window, cx)))
+            .on_action(cx.listener(|this, _: &FindNext, _, cx| this.find_step(1, cx)))
+            .on_action(cx.listener(|this, _: &FindPrev, _, cx| this.find_step(-1, cx)))
             .on_action(cx.listener(|this, _: &Escape, window, cx| {
                 if this.rename.is_some() {
                     this.cancel_rename(window, cx);
@@ -2081,6 +2952,10 @@ impl Render for Shell {
                 if this.new_vault.is_some() {
                     this.cancel_new_vault(window, cx);
                 }
+                if this.search_open {
+                    this.close_search(window, cx);
+                }
+                this.rail_fly_close(cx);
                 this.pressed = None;
                 this.menus.close(cx);
                 cx.notify();
@@ -2108,11 +2983,24 @@ impl Render for Shell {
                 .absolute()
                 .size_0(),
             )
-            .child(h_flex().size_full().items_stretch().child(self.render_sidebar(side_w, cx)).child(div().flex_1().min_w_0().h_full().p(FRAME).pl(if side_w > FRAME { px(0.) } else { FRAME - side_w }).child(card)))
-            .child(self.render_strip(cx))
+            // The sidebar's column grows from nothing to its width while
+            // the sidebar itself stays put and fades in over the last
+            // part of the way; the card's left edge waits at the rail's
+            // until the column is past it.
+            .child(
+                h_flex()
+                    .size_full()
+                    .items_stretch()
+                    .when(t_side > 0., |d| d.child(div().h_full().flex_shrink_0().w(side_w).overflow_hidden().child(div().h_full().w(SIDEBAR_W).opacity(side_shown).child(self.render_sidebar(cx)))))
+                    .child(div().flex_1().min_w_0().h_full().pt(FRAME).pb(FRAME).pr(FRAME).pl((RAIL_W - side_w).max(px(0.))).child(card)),
+            )
+            .children(rail)
+            .children(fly)
+            .child(strip)
             .children(crate::csd::chrome(window, px(1.) + FRAME / 2. + TITLEBAR_H / 2. - px(12.), |window, _| window.remove_window(), cx))
             .children(menu)
             .children(sheet)
+            .children(search)
             .child(self.ambient.clone())
     }
 }
@@ -2152,6 +3040,18 @@ impl Shell {
                     }
                 }
                 "sidebar" => self.toggle_sidebar(window, cx),
+                "home" => self.show_home(window, cx),
+                "wide" => self.set_wide(true, window, cx),
+                "search" => {
+                    self.open_search(window, cx);
+                    self.search_input.update(cx, |s, cx| s.set_value("note", window, cx));
+                    self.run_search(cx);
+                }
+                "find" => {
+                    self.open_find(window, cx);
+                    self.find_input.update(cx, |s, cx| s.set_value("the", window, cx));
+                    self.run_find(cx);
+                }
                 "vault" => self.start_new_vault(window, cx),
                 "notes" => {
                     // The vault's first three notes, as tabs.

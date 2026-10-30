@@ -11,13 +11,20 @@ pub fn open(target: &str) {
 
 /// Show `path` selected in the file manager. macOS and Windows can select
 /// a file; on Linux the folder opens, as close as xdg gets without D-Bus.
-/// A path as a person reads it: the home folder as `~` and the system's
-/// own separator. The same on every system but the separator.
+/// A path as a person reads it: a path in iCloud Drive from `iCloud
+/// Drive`, as the Finder names the folder, the home folder as `~`, and
+/// the system's own separator. The same on every system but the
+/// separator and where iCloud Drive is.
 pub fn short_path(path: &std::path::Path) -> String {
     let home = onyx_core::paths::home();
+    let sep = std::path::MAIN_SEPARATOR;
+    let cloud = home.join("Library").join("Mobile Documents").join("com~apple~CloudDocs");
+    if let Ok(rest) = path.strip_prefix(&cloud) {
+        return if rest.as_os_str().is_empty() { "iCloud Drive".to_string() } else { format!("iCloud Drive{sep}{}", rest.display()) };
+    }
     match path.strip_prefix(&home) {
         Ok(rest) if rest.as_os_str().is_empty() => "~".to_string(),
-        Ok(rest) => format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()),
+        Ok(rest) => format!("~{sep}{}", rest.display()),
         Err(_) => path.display().to_string(),
     }
 }
@@ -109,19 +116,163 @@ pub fn install_dock_icon() {}
 /// to the frame's color, whatever shows there is the frame.
 #[cfg(target_os = "macos")]
 pub fn set_window_ground(window: &gpui::Window, ground: gpui::Rgba) {
-    use objc2_app_kit::{NSColor, NSView};
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use objc2_app_kit::NSColor;
 
-    let Ok(handle) = HasWindowHandle::window_handle(window) else { return };
-    let RawWindowHandle::AppKit(handle) = handle.as_raw() else { return };
-    let Some(view) = (unsafe { (handle.ns_view.as_ptr() as *const NSView).as_ref() }) else { return };
-    if let Some(native) = view.window() {
+    if let Some(native) = ns_view(window).and_then(|v| v.window()) {
         let color = NSColor::colorWithSRGBRed_green_blue_alpha(ground.r as f64, ground.g as f64, ground.b as f64, 1.);
         native.setBackgroundColor(Some(&color));
     }
 }
 #[cfg(not(target_os = "macos"))]
 pub fn set_window_ground(_window: &gpui::Window, _ground: gpui::Rgba) {}
+
+/// Where gpui puts the traffic lights' row on the main window: the close
+/// button's top left, from the window's top left (`main.rs`).
+pub const LIGHTS_ROW: (f32, f32) = (17., 20.);
+
+/// The main window's traffic lights between gpui's row (`k` 1) and a
+/// column at the rail's head about `mid` (`k` 0), as the sidebar folds
+/// (`Shell::render_rail`). gpui puts them back in its row at a resize,
+/// a change of key window or of appearance and more, so each button and
+/// their container are watched, and moved again whenever anything moves
+/// them. (After emaki's `sys::fold_lights`.)
+#[cfg(target_os = "macos")]
+pub fn fold_lights(window: &gpui::Window, k: f32, mid: f32) {
+    let Some(native) = ns_view(window).and_then(|v| v.window()) else { return };
+    lights::FOLD.set((k, mid));
+    lights::watch(&native);
+    lights::place(&native);
+}
+#[cfg(not(target_os = "macos"))]
+pub fn fold_lights(_: &gpui::Window, _: f32, _: f32) {}
+
+#[cfg(target_os = "macos")]
+mod lights {
+    use std::cell::{Cell, RefCell};
+    use std::ptr::NonNull;
+
+    use objc2::rc::{Retained, Weak};
+    use objc2::runtime::ProtocolObject;
+    use objc2::Message as _;
+    use objc2_app_kit::{NSButton, NSView, NSViewFrameDidChangeNotification, NSWindow, NSWindowButton, NSWindowStyleMask};
+    use objc2_foundation::{NSNotification, NSNotificationCenter, NSObjectProtocol, NSPoint, NSRect, NSSize};
+
+    thread_local! {
+        pub(super) static FOLD: Cell<(f32, f32)> = const { Cell::new((1., 0.)) };
+        /// The distance from one button to the next in the system's row,
+        /// read while they stand in it.
+        static PITCH: Cell<Option<f64>> = const { Cell::new(None) };
+        /// Set while the lights are being moved here, so the moves they
+        /// post are not answered.
+        static MOVING: Cell<bool> = const { Cell::new(false) };
+        static WATCHING: RefCell<(usize, Vec<Retained<ProtocolObject<dyn NSObjectProtocol>>>)> = const { RefCell::new((0, Vec::new())) };
+    }
+
+    fn buttons(native: &NSWindow) -> Option<[Retained<NSButton>; 3]> {
+        Some([
+            native.standardWindowButton(NSWindowButton::CloseButton)?,
+            native.standardWindowButton(NSWindowButton::MiniaturizeButton)?,
+            native.standardWindowButton(NSWindowButton::ZoomButton)?,
+        ])
+    }
+
+    /// The view the buttons stand in, and the title bar's container
+    /// around it, which gpui sizes to the row.
+    fn holders(close: &NSButton) -> (Option<Retained<NSView>>, Option<Retained<NSView>>) {
+        // SAFETY: the button is the window's own, from
+        // `standardWindowButton`, and each view is returned retained.
+        let view = unsafe { close.superview() };
+        let container = view.as_ref().and_then(|v| unsafe { v.superview() });
+        (view, container)
+    }
+
+    /// Each button and their container post their moves to `place`.
+    /// AppKit can make the buttons anew, and new ones are watched then.
+    pub(super) fn watch(native: &NSWindow) {
+        let Some(b) = buttons(native) else { return };
+        let key = Retained::as_ptr(&b[0]) as usize;
+        if WATCHING.with_borrow(|w| w.0 == key) {
+            return;
+        }
+        let center = NSNotificationCenter::defaultCenter();
+        WATCHING.with_borrow_mut(|w| {
+            for old in w.1.drain(..) {
+                unsafe { center.removeObserver(AsRef::<objc2::runtime::AnyObject>::as_ref(&*old)) };
+            }
+        });
+        let weak = Weak::from_retained(&native.retain());
+        let block = block2::RcBlock::new(move |_: NonNull<NSNotification>| {
+            if let Some(native) = weak.load() {
+                place(&native);
+            }
+        });
+        let container = holders(&b[0]).1;
+        let views: Vec<Retained<NSView>> = b.iter().map(|b| Retained::into_super(Retained::into_super(b.clone()))).chain(container).collect();
+        let tokens = views
+            .iter()
+            .map(|v| {
+                v.setPostsFrameChangedNotifications(true);
+                unsafe { center.addObserverForName_object_queue_usingBlock(Some(NSViewFrameDidChangeNotification), Some(v), None, &block) }
+            })
+            .collect();
+        WATCHING.set((key, tokens));
+    }
+
+    /// The buttons where the fold puts them. In full screen they are the
+    /// system's, as gpui leaves them.
+    pub(super) fn place(native: &NSWindow) {
+        if MOVING.get() || native.styleMask().contains(NSWindowStyleMask::FullScreen) {
+            return;
+        }
+        let Some(b) = buttons(native) else { return };
+        let (Some(view), Some(container)) = holders(&b[0]) else { return };
+        let (close, mini) = (b[0].frame(), b[1].frame());
+        if (close.origin.y - mini.origin.y).abs() < 0.01 && mini.origin.x > close.origin.x {
+            PITCH.set(Some(mini.origin.x - close.origin.x));
+        }
+        let Some(pitch) = PITCH.get() else { return };
+        let (k, mid) = FOLD.get();
+        let (k, mid) = (k as f64, mid as f64);
+        let (row_x, row_y) = (super::LIGHTS_ROW.0 as f64, super::LIGHTS_ROW.1 as f64);
+        let (w, h) = (close.size.width, close.size.height);
+        let col_x = mid - w / 2.;
+        // Each button's left and its top under the window's top.
+        let at = |i: f64| (col_x + (row_x + pitch * i - col_x) * k, row_y + pitch * i * (1. - k));
+        // The container holds the buttons, which take a click only
+        // inside it: as tall as the column. It stays the window's width,
+        // as gpui leaves it: on some systems it draws the window's rim
+        // and corner at its own edge, which narrower stood as a notch
+        // and a line on the rail. A click on the card under it passes
+        // through to the window, as it does under gpui's own row.
+        let window = native.frame().size;
+        let height = at(2.).1 + h + row_y;
+        MOVING.set(true);
+        let mut moved = false;
+        let mut frame: NSRect = container.frame();
+        if (frame.size.height - height).abs() > 0.01 || (frame.origin.y - (window.height - height)).abs() > 0.01 || (frame.size.width - window.width).abs() > 0.01 || frame.origin.x.abs() > 0.01 {
+            frame.size = NSSize::new(window.width, height);
+            frame.origin.x = 0.;
+            frame.origin.y = window.height - height;
+            container.setFrame(frame);
+            moved = true;
+        }
+        let (flipped, inside) = (view.isFlipped(), view.bounds().size.height);
+        for (i, button) in b.iter().enumerate() {
+            let (x, y) = at(i as f64);
+            let origin = NSPoint::new(x, if flipped { y } else { inside - y - h });
+            let now = button.frame().origin;
+            if (now.x - origin.x).abs() > 0.01 || (now.y - origin.y).abs() > 0.01 {
+                button.setFrameOrigin(origin);
+                button.updateTrackingAreas();
+                moved = true;
+            }
+        }
+        if moved {
+            container.updateTrackingAreas();
+        }
+        MOVING.set(false);
+    }
+}
 
 #[cfg(target_os = "macos")]
 mod languages {
