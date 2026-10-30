@@ -51,7 +51,7 @@ mod tests {
     /// draws nothing, and nothing says so.
     #[test]
     fn every_named_icon_is_carried() {
-        let sources = [include_str!("main.rs"), include_str!("widgets.rs"), include_str!("shell.rs"), include_str!("settings.rs"), include_str!("menu.rs"), include_str!("i18n.rs"), include_str!("editor.rs")];
+        let sources = [include_str!("main.rs"), include_str!("widgets.rs"), include_str!("shell.rs"), include_str!("settings.rs"), include_str!("menu.rs"), include_str!("i18n.rs"), include_str!("editor.rs"), include_str!("tabs.rs"), include_str!("langs.rs")];
         let mut missing = Vec::new();
         for src in sources {
             for (at, _) in src.match_indices("\"icons/") {

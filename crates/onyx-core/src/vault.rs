@@ -160,6 +160,24 @@ pub fn new_folder(dir: &Path, name: &str) -> io::Result<PathBuf> {
     Ok(path)
 }
 
+/// A new vault: a folder named `name` in `parent`, made along with the
+/// folders above it. The name is refused when empty or with a path
+/// separator; a folder of that name that is there already becomes the
+/// vault as it is, so a folder synced from elsewhere is not refused, but
+/// a file of that name is.
+pub fn new_vault(parent: &Path, name: &str) -> io::Result<PathBuf> {
+    let name = name.trim();
+    if name.is_empty() || name.contains('/') || name.contains('\\') {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "a name is one or more characters with no slash"));
+    }
+    let path = parent.join(name);
+    if path.is_file() {
+        return Err(io::Error::new(io::ErrorKind::AlreadyExists, "a file of that name is there already"));
+    }
+    fs::create_dir_all(&path)?;
+    Ok(path)
+}
+
 /// A note or a folder renamed in place. A note keeps its extension; the
 /// name is refused when empty, when it has a path separator, or when an
 /// entry of that name is there already.

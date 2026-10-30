@@ -65,6 +65,12 @@
 // across the polished stone.
 const NAVY = '#2b2556', AMBER = '#ffb83e', VIOLET = '#6a3fd9', ACCENT = '#6FB9C4';
 const CREAM = '#f7eedd';
+// The ground: the studio's cream with a fifth of Onyx's teal in it, so the
+// icon reads as the studio's and as Onyx's at once. The cream gradient's
+// two ends mixed with the mean of teal's two base shades (#277580 and
+// #6FB9C4), 16% at the top
+// left and 24% at the bottom right (the constitution's rule, `ground()` in
+// its template): #fdf8ee becomes #e1e8e2 and #f1e4d0 becomes #c9d2c5.
 const NAME = 'Onyx';
 
 const stroke = (ctx, pts, style, width, cap = 'round') => {
@@ -295,7 +301,7 @@ function drawSubject(ctx, px) {
 const ICONS = [
   {
     id: 'onyx', name: CHOSEN.name, desc: CHOSEN.desc,
-    bg: ['#fdf8ee', '#f1e4d0'],   // top left to bottom right
+    bg: ['#e1e8e2', '#c9d2c5'],   // top left to bottom right: the cream, teal washed
     glyph: drawSubject,
   },
 ];

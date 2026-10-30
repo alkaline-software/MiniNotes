@@ -1253,8 +1253,13 @@ pub struct CodeBlock {
 
 /// The icon of a chunk's language, by its file's name in the caller's
 /// set (`TextViewStyle::chunk_icons`). (Studio addition.)
-fn chunk_icon(lang: Option<&str>) -> Option<&'static str> {
-    let inner = lang?.strip_prefix('{')?.trim_end_matches('}');
+fn chunk_icon(lang: Option<&str>, plain: bool) -> Option<&'static str> {
+    let lang = lang?;
+    let inner = match lang.strip_prefix('{') {
+        Some(inner) => inner.trim_end_matches('}'),
+        None if plain => lang,
+        None => return None,
+    };
     let word = inner.trim_start_matches('=').split(|c: char| c == ',' || c.is_whitespace()).next()?.trim().to_ascii_lowercase();
     Some(match word.as_str() {
         "r" => "r",
@@ -1284,8 +1289,13 @@ fn chunk_icon(lang: Option<&str>) -> Option<&'static str> {
 /// The name a Quarto chunk's language is shown under: `{r}` R,
 /// `{python}` Python, a raw block (`{=latex}`) its format. None for a
 /// block of code that is not a chunk. (Studio addition.)
-fn chunk_label(lang: Option<&str>) -> Option<String> {
-    let inner = lang?.strip_prefix('{')?.trim_end_matches('}');
+fn chunk_label(lang: Option<&str>, plain: bool) -> Option<String> {
+    let lang = lang?;
+    let inner = match lang.strip_prefix('{') {
+        Some(inner) => inner.trim_end_matches('}'),
+        None if plain => lang,
+        None => return None,
+    };
     let word = inner.trim_start_matches('=').split(|c: char| c == ',' || c.is_whitespace()).next()?.trim();
     if word.is_empty() {
         return None;
@@ -1497,8 +1507,11 @@ impl CodeBlock {
         // closes up to it over a moment, off the chunk's own clock. The
         // fold is kept by what the chunk says, so a file read again keeps
         // its folds.
-        let label = chunk_label(self.lang.as_deref());
-        let fold = label.as_ref().map(|_| {
+        // A chunk (its language in braces) folds; a plain fence with
+        // `lang_marks` has the head alone. (Studio addition.)
+        let chunk = self.lang.as_deref().is_some_and(|l| l.starts_with('{'));
+        let label = chunk_label(self.lang.as_deref(), style.lang_marks);
+        let fold = label.as_ref().filter(|_| chunk).map(|_| {
             use std::hash::{Hash as _, Hasher as _};
             let mut h = std::collections::hash_map::DefaultHasher::new();
             self.lang.hash(&mut h);
@@ -1518,36 +1531,41 @@ impl CodeBlock {
         };
         let head = label.map(|label| {
             let [fold_tip, unfold_tip] = style.chunk_words.clone();
-            let icon = (!style.chunk_icons.is_empty()).then(|| chunk_icon(self.lang.as_deref())).flatten().map(|id| SharedString::from(format!("{}/{id}.svg", style.chunk_icons)));
+            let icon = (!style.chunk_icons.is_empty()).then(|| chunk_icon(self.lang.as_deref(), style.lang_marks)).flatten().map(|id| SharedString::from(format!("{}/{id}.svg", style.chunk_icons)));
             let tip = if open { fold_tip } else { unfold_tip };
-            let fold = fold.clone().unwrap();
+            let fold = fold.clone();
             div()
                 .id("chunk-head")
                 .flex()
                 .flex_row()
                 .items_center()
                 .gap(px(5.))
-                .cursor_pointer()
+                // A plain fence's head stands at the right, out of the
+                // code's way; a chunk's leads, with its chevron.
+                .when(!chunk, |d| d.justify_end())
                 .font_family(cx.theme().font_family.clone())
                 .text_size(px(11.5))
                 .line_height(px(16.))
                 .text_color(cx.theme().muted_foreground)
-                .hover(|s| s.text_color(cx.theme().foreground))
-                .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
-                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .on_click(move |_, window, cx| {
-                    gpui_base::TextSelection::end(window, cx);
-                    cx.stop_propagation();
-                    fold.update(cx, |f, cx| {
-                        f.toggle();
-                        cx.notify();
-                    });
-                    window.refresh();
+                .when_some(fold, |d, fold| {
+                    d.cursor_pointer()
+                        .hover(|s| s.text_color(cx.theme().foreground))
+                        .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_click(move |_, window, cx| {
+                            gpui_base::TextSelection::end(window, cx);
+                            cx.stop_propagation();
+                            fold.update(cx, |f, cx| {
+                                f.toggle();
+                                cx.notify();
+                            });
+                            window.refresh();
+                        })
+                        .child(
+                            crate::Sizable::with_size(crate::Icon::new(crate::IconName::ChevronDown), px(12.))
+                                .rotate(gpui::Radians(-std::f32::consts::FRAC_PI_2 * (1. - shown))),
+                        )
                 })
-                .child(
-                    crate::Sizable::with_size(crate::Icon::new(crate::IconName::ChevronDown), px(12.))
-                        .rotate(gpui::Radians(-std::f32::consts::FRAC_PI_2 * (1. - shown))),
-                )
                 .children(icon.map(|path| gpui::img(path).size(px(13.)).flex_shrink_0()))
                 .child(label)
         });

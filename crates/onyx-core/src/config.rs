@@ -33,12 +33,26 @@ impl Default for AppConfig {
 #[serde(default)]
 pub struct EditorConfig {
     /// The face a note's words are set in, by its key in the app's
-    /// `fonts::TEXT_FACES`: `inter`, `source-serif`, or `system`.
+    /// `fonts::SERIFS` or `fonts::SANS`.
     pub text_face: String,
-    /// The face code is set in, by its key in `fonts::MONO_FACES`.
+    /// The face code is set in, by its key in `fonts::MONOS`.
     pub mono_face: String,
-    /// `small`, `medium` or `large`: the words' size in every place at once.
+    /// The face Chinese, Japanese and Korean are set in behind the Latin
+    /// faces, by its key in `fonts::CJK`: `auto` matches the note's face
+    /// (a serif behind a serif), else a carried face.
+    pub cjk_face: String,
+    /// A font installed on the machine, by its family name, in place of
+    /// the chosen face; empty, the chosen face. One for the words, one
+    /// for code, one for Chinese.
+    pub text_custom: String,
+    pub mono_custom: String,
+    pub cjk_custom: String,
+    /// `small`, `medium`, `large` or `custom`: a preset for every place
+    /// at once, or the person's own sizes (`sizes`).
     pub text_size: String,
+    /// The person's own sizes, kept while a preset is chosen so Custom
+    /// comes back to them; `None` until Custom was chosen once.
+    pub sizes: Option<TextSizes>,
     /// Lines no wider than a comfortable line of reading, centered;
     /// off, a note runs the width of the window.
     pub readable_width: bool,
@@ -46,7 +60,62 @@ pub struct EditorConfig {
 
 impl Default for EditorConfig {
     fn default() -> Self {
-        Self { text_face: "inter".into(), mono_face: "jetbrains-mono".into(), text_size: "medium".into(), readable_width: true }
+        Self { text_face: "inter".into(), mono_face: "jetbrains".into(), cjk_face: "auto".into(), text_custom: String::new(), mono_custom: String::new(), cjk_custom: String::new(), text_size: "medium".into(), sizes: None, readable_width: true }
+    }
+}
+
+impl EditorConfig {
+    /// The sizes in force: the preset's, or the person's own under Custom.
+    pub fn text_sizes(&self) -> TextSizes {
+        TextSizes::preset(&self.text_size).unwrap_or_else(|| self.sizes.unwrap_or(TextSizes::MEDIUM).clamped())
+    }
+}
+
+/// The size of the words in each place, in points.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct TextSizes {
+    /// A note's words, as it is written and as it reads.
+    pub note: f32,
+    /// Code: a block, a span, a table, a note as written.
+    pub code: f32,
+}
+
+impl Default for TextSizes {
+    fn default() -> Self {
+        Self::MEDIUM
+    }
+}
+
+impl TextSizes {
+    /// The default: a note at Obsidian's own body size, code a step
+    /// under, as a Mac's editors set monospace. Every preset's sizes are
+    /// whole points.
+    pub const MEDIUM: Self = Self { note: 16., code: 14. };
+    pub const SMALL: Self = Self { note: 14., code: 13. };
+    pub const LARGE: Self = Self { note: 18., code: 16. };
+    /// What a size may be set to.
+    pub const LEAST: f32 = 9.;
+    pub const MOST: f32 = 32.;
+
+    /// A preset by its name; `custom` and anything else is none.
+    pub fn preset(name: &str) -> Option<Self> {
+        match name {
+            "small" => Some(Self::SMALL),
+            "medium" => Some(Self::MEDIUM),
+            "large" => Some(Self::LARGE),
+            _ => None,
+        }
+    }
+
+    /// A step up or down from `value`: a whole point.
+    pub fn step(value: f32, up: bool) -> f32 {
+        let to = if up { value.floor() + 1. } else { value.ceil() - 1. };
+        to.clamp(Self::LEAST, Self::MOST)
+    }
+
+    pub fn clamped(self) -> Self {
+        Self { note: self.note.clamp(Self::LEAST, Self::MOST), code: self.code.clamp(Self::LEAST, Self::MOST) }
     }
 }
 

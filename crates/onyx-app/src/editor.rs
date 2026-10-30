@@ -15,6 +15,7 @@
 
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::rc::Rc;
@@ -135,27 +136,36 @@ pub struct Look {
     pub text_family: SharedString,
     pub mono_family: SharedString,
     pub text_px: f32,
+    /// Code's size: a block, a span, a table, a note as written.
+    pub mono_px: f32,
+    /// The faces behind each, for the characters it lacks (`fonts::cjk_fallbacks`).
+    pub text_fallbacks: Option<FontFallbacks>,
+    pub mono_fallbacks: Option<FontFallbacks>,
 }
 
 impl Default for Look {
     fn default() -> Self {
-        Self { text_family: "Inter".into(), mono_family: "JetBrains Mono".into(), text_px: 16. }
+        Self { text_family: "Inter".into(), mono_family: "JetBrains Mono".into(), text_px: 16., mono_px: 14., text_fallbacks: None, mono_fallbacks: None }
     }
 }
 
 /// The words' line, as a share of their size.
 const LINE: f32 = 1.6;
+/// A blank line's share of a line as the note reads, so a paragraph's
+/// gap is the one the reading view leaves.
+const BLANK_LINE: f32 = 0.75;
 /// A heading's size as a share of the words', its weight, and its line.
 const HEADINGS: [(f32, FontWeight, f32); 6] = [(1.618, FontWeight::BOLD, 1.25), (1.462, FontWeight::SEMIBOLD, 1.25), (1.318, FontWeight::SEMIBOLD, 1.3), (1.188, FontWeight::SEMIBOLD, 1.35), (1.076, FontWeight::SEMIBOLD, 1.4), (1.0, FontWeight::SEMIBOLD, 1.5)];
-/// Code's size as a share of the words'.
-const CODE: f32 = 0.9;
 /// Each level of a list, and each level of a quote, stands this far in.
 const LIST_INDENT: f32 = 26.;
 const QUOTE_INDENT: f32 = 18.;
 /// The room at a code plate's top and foot, which its fence lines take
 /// while they are hidden, and at its sides.
-const PLATE_PAD: f32 = 10.;
+const PLATE_PAD: f32 = 12.;
 const PLATE_X: f32 = 12.;
+/// A shown fence stands this far in from the plate's edge above it or
+/// below it: the plate's padding less the fence's own line room.
+const FENCE_PAD: f32 = 6.;
 const CELL_X: f32 = 10.;
 const CELL_Y: f32 = 5.;
 const BLINK: Duration = Duration::from_millis(530);
@@ -237,6 +247,9 @@ struct TextRow {
     /// Where the words begin, from the element's left.
     inset: f32,
     top_pad: f32,
+    /// Room under the words: a closing fence's, so the plate keeps its
+    /// padding while its fences show.
+    bottom_pad: f32,
     widgets: Vec<Widget>,
     /// Which spans' words are links, by their shown range, and where
     /// each leads.
@@ -274,8 +287,9 @@ struct TableRow {
 
 enum Row {
     Text(TextRow),
-    /// A hidden fence line: the plate's padding, and the language on the first.
-    Pad { lang: Option<ShapedLine> },
+    /// A hidden fence line: the plate's padding, and on the first the
+    /// language's mark: its name shaped, its icon's path and its color.
+    Pad { lang: Option<(ShapedLine, &'static str, Hsla)> },
     /// A line with no height: a table's row drawn in its first, a hidden underline.
     Hidden,
     Rule { inset: f32, line_h: f32 },
@@ -295,6 +309,11 @@ struct Cache {
     entries: Vec<Entry>,
     tops: Vec<f32>,
     total: f32,
+    /// Each code block's colors, by its first line: the key of the text
+    /// they were read from, and a list a line of (bytes, ink).
+    code_colors: HashMap<usize, (u64, Vec<Vec<(Range<usize>, Hsla)>>)>,
+    /// A highlighter a language, kept: making one reads its grammar.
+    highlighters: HashMap<String, gpui_component::highlighter::SyntaxHighlighter>,
 }
 
 /// A caret's place on the page, from the element's top left.
@@ -361,9 +380,6 @@ impl Editor {
         self.doc.text()
     }
 
-    pub fn mode(&self) -> Mode {
-        self.mode
-    }
 
     pub fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
         if self.mode != mode {
@@ -973,18 +989,27 @@ impl Editor {
         self.look.text_family.hash(&mut h);
         self.look.mono_family.hash(&mut h);
         self.look.text_px.to_bits().hash(&mut h);
+        self.look.mono_px.to_bits().hash(&mut h);
         theme.mode.is_dark().hash(&mut h);
         (self.mode as u8).hash(&mut h);
         h.finish()
     }
 
     /// Whether the selection touches a line.
+    /// Whether the caret is on a line: never while the keyboard is
+    /// elsewhere, so a note left by a click in the margin reads whole.
     fn on_line(&self, line: usize) -> bool {
+        if !self.focused {
+            return false;
+        }
         let (a, b) = self.sel.range();
         a.line <= line && line <= b.line
     }
 
     fn touches(&self, r: &Range<usize>, inclusive: bool) -> bool {
+        if !self.focused {
+            return false;
+        }
         let (a, b) = self.sel.range();
         let (ga, gb) = (self.doc.offset_of(a), self.doc.offset_of(b));
         if inclusive { ga <= r.end && gb >= r.start } else { ga < r.end && gb > r.start }
@@ -1031,7 +1056,7 @@ impl Editor {
 
     fn block_revealed(&self, first: usize, last: usize) -> bool {
         let (a, b) = self.sel.range();
-        self.mode == Mode::Source || (a.line <= last && b.line >= first)
+        self.mode == Mode::Source || (self.focused && a.line <= last && b.line >= first)
     }
 
     /// The whole note laid out at `width`, line by line, each only when
@@ -1047,14 +1072,22 @@ impl Editor {
             cache.look_key = look_key;
         }
         cache.entries.truncate(n);
+        self.color_code(&mut cache, &theme);
         let mut tops = Vec::with_capacity(n);
         let mut y = 0.;
         for line in 0..n {
             let hidden = self.hidden_on(line);
+            let colors: Vec<(Range<usize>, Hsla)> = self.code_colors_of(&cache, line).to_vec();
             let text = self.doc.line(line);
             let info = &self.analysis.lines[line];
             let mut h = DefaultHasher::new();
             text.hash(&mut h);
+            for (r, c) in &colors {
+                r.hash(&mut h);
+                c.h.to_bits().hash(&mut h);
+                c.s.to_bits().hash(&mut h);
+                c.l.to_bits().hash(&mut h);
+            }
             hidden.hash(&mut h);
             info.kind.hash_key(&mut h);
             info.task_done.hash(&mut h);
@@ -1075,7 +1108,7 @@ impl Editor {
             let key = h.finish();
             let fresh = cache.entries.get(line).is_none_or(|e| e.key != key);
             if fresh {
-                let row = self.lay_out(line, &hidden, revealed, prev_blank, width, &theme, window);
+                let row = self.lay_out(line, &hidden, &colors, revealed, prev_blank, width, &theme, window);
                 let height = row_height(&row);
                 let entry = Entry { key, height, row: Rc::new(row) };
                 if line < cache.entries.len() {
@@ -1092,15 +1125,75 @@ impl Editor {
     }
 
     fn font(&self, family: &SharedString, weight: FontWeight, italic: bool) -> Font {
-        Font { family: family.clone(), features: FontFeatures::default(), fallbacks: None, weight, style: if italic { FontStyle::Italic } else { FontStyle::Normal } }
+        let fallbacks = if *family == self.look.mono_family { self.look.mono_fallbacks.clone() } else { self.look.text_fallbacks.clone() };
+        Font { family: family.clone(), features: FontFeatures::default(), fallbacks, weight, style: if italic { FontStyle::Italic } else { FontStyle::Normal } }
+    }
+
+    /// Each code block's colors read again where its text changed: the
+    /// toolkit's tree-sitter highlighter for the fence's language, the
+    /// inks the theme's `highlight` table names, the same the note gets
+    /// as it reads. A block with no language, or one the toolkit has no
+    /// grammar for, keeps the plain ink.
+    fn color_code(&self, cache: &mut Cache, theme: &gpui_component::Theme) {
+        use gpui_component::highlighter::SyntaxHighlighter;
+        let firsts: Vec<usize> = self.analysis.code_blocks.iter().map(|b| b.first).collect();
+        cache.code_colors.retain(|first, _| firsts.contains(first));
+        for b in &self.analysis.code_blocks {
+            if b.lang.is_empty() {
+                cache.code_colors.remove(&b.first);
+                continue;
+            }
+            let last = if b.closed { b.last.saturating_sub(1) } else { b.last };
+            let lines: Vec<&str> = (b.first + 1..=last).filter(|&l| l < self.doc.line_count()).map(|l| self.doc.line(l)).collect();
+            let code = lines.join("\n");
+            let mut h = DefaultHasher::new();
+            b.lang.hash(&mut h);
+            code.hash(&mut h);
+            theme.mode.is_dark().hash(&mut h);
+            let key = h.finish();
+            if cache.code_colors.get(&b.first).is_some_and(|(k, _)| *k == key) {
+                continue;
+            }
+            let hl = cache.highlighters.entry(b.lang.clone()).or_insert_with(|| SyntaxHighlighter::new(&b.lang));
+            let rope = ropey::Rope::from_str(&code);
+            hl.update(None, &rope, None);
+            let styled = hl.styles(&(0..code.len()), theme.highlight_theme.as_ref());
+            // The block's bytes to each line's own.
+            let mut per_line: Vec<Vec<(Range<usize>, Hsla)>> = vec![Vec::new(); lines.len()];
+            let mut starts = Vec::with_capacity(lines.len());
+            let mut at = 0;
+            for l in &lines {
+                starts.push(at);
+                at += l.len() + 1;
+            }
+            for (range, style) in styled {
+                let Some(color) = style.color else { continue };
+                for (ix, l) in lines.iter().enumerate() {
+                    let (ls, le) = (starts[ix], starts[ix] + l.len());
+                    let (a, bb) = (range.start.max(ls), range.end.min(le));
+                    if a < bb {
+                        per_line[ix].push((a - ls..bb - ls, color));
+                    }
+                }
+            }
+            cache.code_colors.insert(b.first, (key, per_line));
+        }
+    }
+
+    /// The colors of a code line, from its block's reading.
+    fn code_colors_of<'a>(&self, cache: &'a Cache, line: usize) -> &'a [(Range<usize>, Hsla)] {
+        let Some(b) = self.analysis.code_block_at(line) else { return &[] };
+        let Some((_, per_line)) = cache.code_colors.get(&b.first) else { return &[] };
+        line.checked_sub(b.first + 1).and_then(|ix| per_line.get(ix)).map(|v| v.as_slice()).unwrap_or(&[])
     }
 
     /// One line laid out: its words with the hidden marks taken out, in
     /// runs of the faces and inks its spans ask for, and its widgets.
-    fn lay_out(&self, line: usize, hidden: &[Range<usize>], revealed: bool, prev_blank: bool, width: f32, theme: &gpui_component::Theme, window: &mut Window) -> Row {
+    fn lay_out(&self, line: usize, hidden: &[Range<usize>], colors: &[(Range<usize>, Hsla)], revealed: bool, prev_blank: bool, width: f32, theme: &gpui_component::Theme, window: &mut Window) -> Row {
         let info = &self.analysis.lines[line];
         let text = self.doc.line(line);
         let px_text = self.look.text_px;
+        let px_mono = self.look.mono_px;
         let dark = theme.mode.is_dark();
         let muted = theme.muted_foreground;
         let ink = theme.foreground;
@@ -1110,11 +1203,14 @@ impl Editor {
         // Block widgets, when the caret is away.
         match &info.kind {
             LineKind::FenceOpen(lang) if !revealed => {
+                // The language's mark at the plate's top right: its icon
+                // in its color and its name, the same the note reads with.
                 let lang = (!lang.is_empty()).then(|| {
-                    let font = self.font(&self.look.mono_family, FontWeight::NORMAL, false);
-                    let size = px(px_text * 0.75);
-                    let run = TextRun { len: lang.len(), font, color: muted, background_color: None, underline: None, strikethrough: None };
-                    window.text_system().shape_line(SharedString::from(lang.clone()), size, &[run], None)
+                    let mark = crate::langs::of(lang);
+                    let font = Font { family: theme.font_family.clone(), features: FontFeatures::default(), fallbacks: None, weight: FontWeight::NORMAL, style: FontStyle::Normal };
+                    let run = TextRun { len: mark.name.len(), font, color: muted, background_color: None, underline: None, strikethrough: None };
+                    let line = window.text_system().shape_line(SharedString::from(mark.name.clone()), px(11.5), &[run], None);
+                    (line, mark.icon, gpui::rgb(mark.rgb).into())
                 });
                 return Row::Pad { lang };
             }
@@ -1135,8 +1231,11 @@ impl Editor {
                 let (scale, weight, lh) = HEADINGS[(*level as usize).clamp(1, 6) - 1];
                 (px_text * scale, weight, lh, if prev_blank { 0. } else { px_text * 0.35 })
             }
-            LineKind::Code | LineKind::FrontMatter | LineKind::FrontMatterEdge | LineKind::Html | LineKind::FenceOpen(_) | LineKind::FenceClose => (px_text * CODE, FontWeight::NORMAL, 1.5, 0.),
-            LineKind::TableFirst(_) | LineKind::TableRow(_) => (px_text * CODE, FontWeight::NORMAL, 1.5, 0.),
+            LineKind::Code | LineKind::FrontMatter | LineKind::FrontMatterEdge | LineKind::Html | LineKind::FenceOpen(_) | LineKind::FenceClose => (px_mono, FontWeight::NORMAL, 1.5, 0.),
+            LineKind::TableFirst(_) | LineKind::TableRow(_) => (px_mono, FontWeight::NORMAL, 1.5, 0.),
+            // A blank line as it reads is a paragraph's gap, not a line
+            // of words; as written it is a line like any other.
+            LineKind::Blank if !source => (px_text, FontWeight::NORMAL, LINE * BLANK_LINE, 0.),
             _ => (px_text, FontWeight::NORMAL, LINE, 0.),
         };
         let line_h = (font_px * line_factor).round();
@@ -1161,6 +1260,10 @@ impl Editor {
                 f(s);
             }
         };
+        // Code's own colors, from its language's grammar.
+        for (r, c) in colors {
+            paint(&mut styles, r.clone(), &|s| s.color = *c);
+        }
         // Marks shown are quiet.
         for m in &info.marks {
             paint(&mut styles, m.clone(), &|s| {
@@ -1274,7 +1377,20 @@ impl Editor {
             }
         }
         let inset = self.inset_of(info);
-        let wrap = (width - inset - if matches!(info.kind, LineKind::Code) { PLATE_X } else { 0. }).max(40.);
+        let wrap = width - inset - if matches!(info.kind, LineKind::Code | LineKind::FenceOpen(_) | LineKind::FenceClose) { PLATE_X } else { 0. };
+        // The language's mark stands in the plate's top right corner, over
+        // the first line of code's end, which wraps short of it: the plate
+        // keeps the same room on every side, with no row for the mark.
+        let mark_room = match (&info.kind, self.analysis.code_block_at(line)) {
+            (LineKind::Code, Some(b)) if !revealed && line == b.first + 1 && !b.lang.is_empty() => {
+                let mark = crate::langs::of(&b.lang);
+                let font = Font { family: theme.font_family.clone(), features: FontFeatures::default(), fallbacks: None, weight: FontWeight::NORMAL, style: FontStyle::Normal };
+                let run = TextRun { len: mark.name.len(), font, color: muted, background_color: None, underline: None, strikethrough: None };
+                f32::from(window.text_system().shape_line(SharedString::from(mark.name), px(11.5), &[run], None).width()) + 13. + 5. + 12.
+            }
+            _ => 0.,
+        };
+        let wrap = (wrap - mark_room).max(40.);
         let shaped = SharedString::from(shown.text.clone());
         let mut lines = window.text_system().shape_text(shaped, px(font_px), &runs, Some(px(wrap)), None).unwrap_or_default();
         let wrapped = lines.pop().unwrap_or_else(|| window.text_system().shape_text(" ".into(), px(font_px), &[TextRun { len: 1, font: self.font(&self.look.text_family, FontWeight::NORMAL, false), color: ink, background_color: None, underline: None, strikethrough: None }], None, None).unwrap().pop().unwrap());
@@ -1312,7 +1428,12 @@ impl Editor {
                 widgets.push(Widget::Bar { x: QUOTE_INDENT * d as f32 + 2. });
             }
         }
-        Row::Text(TextRow { shown, source_len: text.len(), line: wrapped, line_h, inset, top_pad, widgets, links: shown_links, chips })
+        let (top_pad, bottom_pad) = match info.kind {
+            LineKind::FenceOpen(_) => (top_pad + FENCE_PAD, 0.),
+            LineKind::FenceClose => (top_pad, FENCE_PAD),
+            _ => (top_pad, 0.),
+        };
+        Row::Text(TextRow { shown, source_len: text.len(), line: wrapped, line_h, inset, top_pad, bottom_pad, widgets, links: shown_links, chips })
     }
 
     /// Where a line's words begin: in by its quotes and its list levels.
@@ -1320,15 +1441,18 @@ impl Editor {
         if self.mode == Mode::Source { 0. } else { QUOTE_INDENT * info.quote_depth as f32 }
     }
 
+    /// Code and its fences stand in from the plate's edge in every mode:
+    /// the source is still read on a plate, with the room a plate has.
     fn inset_of(&self, info: &markdown::LineInfo) -> f32 {
+        let on_plate = matches!(info.kind, LineKind::Code | LineKind::FenceOpen(_) | LineKind::FenceClose);
         if self.mode == Mode::Source {
-            return 0.;
+            return if on_plate { PLATE_X } else { 0. };
         }
         let base = self.base_inset(info);
         match &info.list {
             Some(m) => base + LIST_INDENT * (m.depth as f32 + 1.),
             None if info.list_depth > 0 => base + LIST_INDENT * info.list_depth as f32,
-            None => base + if matches!(info.kind, LineKind::Code) { PLATE_X } else { 0. },
+            None => base + if on_plate { PLATE_X } else { 0. },
         }
     }
 
@@ -1338,7 +1462,7 @@ impl Editor {
         let table = &self.analysis.tables[t];
         let info = &self.analysis.lines[table.first];
         let inset = self.base_inset(info);
-        let px_cell = self.look.text_px * 0.95;
+        let px_cell = self.look.mono_px;
         let line_h = (px_cell * 1.5).round();
         let ncols = table.rows.iter().map(Vec::len).max().unwrap_or(1).max(table.aligns.len()).max(1);
         let avail = (width - inset).max(80.);
@@ -1508,7 +1632,7 @@ fn size_px(s: f32) -> Size<Pixels> {
 
 fn row_height(row: &Row) -> f32 {
     match row {
-        Row::Text(r) => r.top_pad + (r.line.wrap_boundaries().len() as f32 + 1.) * r.line_h,
+        Row::Text(r) => r.top_pad + (r.line.wrap_boundaries().len() as f32 + 1.) * r.line_h + r.bottom_pad,
         Row::Pad { .. } => PLATE_PAD,
         Row::Hidden => 0.,
         Row::Rule { line_h, .. } => *line_h,
@@ -1543,6 +1667,16 @@ impl HashKey for LineKind {
 // -- the input method -------------------------------------------------------
 
 impl EntityInputHandler for Editor {
+    /// False, so a key goes to the bindings before an input method. gpui
+    /// on a Mac hands every printable key, ⌥ chords among them, to an
+    /// active Chinese, Japanese or Korean input method first while the
+    /// handler says it takes text, and the method swallowed ⌥1, ⌥2 and ⌥3.
+    /// Nothing of typing changes: a key no binding takes still reaches the
+    /// method and composes, and this is read nowhere else on a Mac.
+    fn accepts_text_input(&self, _: &mut Window, _: &mut Context<Self>) -> bool {
+        false
+    }
+
     fn text_for_range(&mut self, range_utf16: Range<usize>, adjusted_range: &mut Option<Range<usize>>, _: &mut Window, _: &mut Context<Self>) -> Option<String> {
         let a = self.doc.pos_of_utf16(range_utf16.start);
         let b = self.doc.pos_of_utf16(range_utf16.end);
@@ -1719,11 +1853,13 @@ fn reading_view(text: &str, look: &Look, cx: &App) -> impl IntoElement {
         inline_code_font_family: Some(look.mono_family.clone()),
         inline_code: HighlightStyle { color: Some(theme.link), ..Default::default() },
         inline_code_chip: Some((theme.primary.opacity(if dark { 0.16 } else { 0.10 }), theme.primary.opacity(if dark { 0.22 } else { 0.18 }))),
+        chunk_icons: "icons/lang".into(),
+        lang_marks: true,
         ..Default::default()
     }
     .code_block(StyleRefinement::default().bg(theme.muted).border_1().border_color(theme.border).rounded(px(10.)).px(px(12.)).py(px(10.)));
     div()
-        .font_family(look.text_family.clone())
+        .font(Font { family: look.text_family.clone(), features: FontFeatures::default(), fallbacks: look.text_fallbacks.clone(), weight: FontWeight::NORMAL, style: FontStyle::Normal })
         .text_size(px(look.text_px))
         .line_height(relative(LINE))
         .text_color(theme.foreground)
@@ -1775,7 +1911,20 @@ impl Element for EditorElement {
         None
     }
 
-    fn request_layout(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, window: &mut Window, _: &mut App) -> (LayoutId, ()) {
+    fn request_layout(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+        // Whether the keyboard is in the editor, known before the layout,
+        // since the marks around the caret show only while it is; and the
+        // caret begins to blink as the keyboard arrives.
+        self.editor.update(cx, |e, cx| {
+            let now = e.focus.is_focused(window);
+            if now != e.focused {
+                stamp(if now { "editor focus gained" } else { "editor focus lost" });
+            }
+            if now && !e.focused {
+                e.kick_blink(cx);
+            }
+            e.focused = now;
+        });
         stamp("editor request_layout");
         let mut style = Style::default();
         style.size.width = relative(1.).into();
@@ -1949,9 +2098,18 @@ impl Element for EditorElement {
                     }
                 }
                 Row::Pad { lang } => {
-                    if let Some(l) = lang {
-                        let x = f32::from(bounds.size.width) - f32::from(l.width()) - PLATE_X - 2.;
-                        let _ = l.paint(point(px(ox + x), px(oy + top + 2.)), px(PLATE_PAD + 6.), TextAlign::Left, None, window, cx);
+                    if let Some((l, icon, color)) = lang {
+                        let name_w = f32::from(l.width());
+                        let icon_px = 13.;
+                        // The name's glyphs stand `PLATE_X` in from the right
+                        // and `PLATE_PAD` down from the top: the line box is
+                        // 16 tall for 11.5 of type, so its top sits 3 above
+                        // the caps.
+                        let x = f32::from(bounds.size.width) - name_w - PLATE_X;
+                        let y = oy + top + PLATE_PAD - 3.;
+                        let _ = l.paint(point(px(ox + x), px(y)), px(16.), TextAlign::Left, None, window, cx);
+                        let ib = Bounds::new(point(px(ox + x - icon_px - 5.), px(y + (16. - icon_px) / 2.)), size_px(icon_px));
+                        let _ = window.paint_svg(ib, SharedString::from(*icon), None, TransformationMatrix::unit(), *color, cx);
                     }
                 }
                 Row::Hidden => {}
@@ -2001,6 +2159,9 @@ impl Element for EditorElement {
             if phase != DispatchPhase::Bubble || ev.button != MouseButton::Left || !hitbox.is_hovered(window) {
                 return;
             }
+            // The press is the editor's: the scroller around it hears a
+            // press in the margin only, which takes the keyboard back.
+            cx.stop_propagation();
             let (x, y) = (f32::from(ev.position.x - bounds.origin.x), f32::from(ev.position.y - bounds.origin.y));
             stamp("mouse down");
             ed.update(cx, |e, cx| {

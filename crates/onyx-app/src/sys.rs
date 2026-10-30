@@ -11,6 +11,56 @@ pub fn open(target: &str) {
 
 /// Show `path` selected in the file manager. macOS and Windows can select
 /// a file; on Linux the folder opens, as close as xdg gets without D-Bus.
+/// A path as a person reads it: the home folder as `~` and the system's
+/// own separator. The same on every system but the separator.
+pub fn short_path(path: &std::path::Path) -> String {
+    let home = onyx_core::paths::home();
+    match path.strip_prefix(&home) {
+        Ok(rest) if rest.as_os_str().is_empty() => "~".to_string(),
+        Ok(rest) => format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()),
+        Err(_) => path.display().to_string(),
+    }
+}
+
+/// Onyx's own iCloud container, the folder iCloud Drive shows as an app
+/// library with the icon on it, when the bundle is signed with the
+/// iCloud entitlements and the provisioning profile (`docs/platform.md`).
+/// Asked of the system once, off the main thread (`warm_icloud`), since
+/// the first answer can take a moment; `None` until then, and for good in
+/// a bundle without the entitlements, such as the dev build.
+pub fn icloud_container() -> Option<std::path::PathBuf> {
+    ICLOUD.get().cloned().flatten()
+}
+
+static ICLOUD: std::sync::OnceLock<Option<std::path::PathBuf>> = std::sync::OnceLock::new();
+
+/// Ask the system for the container on a thread of its own, at launch.
+pub fn warm_icloud() {
+    std::thread::Builder::new()
+        .name("icloud".into())
+        .spawn(|| {
+            let _ = ICLOUD.set(icloud_container_now());
+        })
+        .ok();
+}
+
+#[cfg(target_os = "macos")]
+fn icloud_container_now() -> Option<std::path::PathBuf> {
+    use objc2_foundation::NSFileManager;
+    // The container's Documents folder is what iCloud Drive shows; the
+    // rest of the container is the app's own.
+    let url = NSFileManager::defaultManager().URLForUbiquityContainerIdentifier(None)?;
+    let path = url.path()?;
+    let dir = std::path::PathBuf::from(path.to_string()).join("Documents");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn icloud_container_now() -> Option<std::path::PathBuf> {
+    None
+}
+
 pub fn reveal(path: &std::path::Path) {
     #[cfg(target_os = "macos")]
     {

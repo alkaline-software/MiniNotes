@@ -36,6 +36,17 @@ if [[ "$(uname)" == Darwin ]]; then
 ${said##*Error: }"
 fi
 
+# The iCloud container is in the release only with the provisioning
+# profile; a release without it ships vaults as plain folders in iCloud
+# Drive, which is said here rather than found in Finder afterwards.
+if [[ "$(uname)" == Darwin ]]; then
+  if [[ -z "${ONYX_PROVISION_PROFILE:-}" ]]; then
+    echo "release-check: ONYX_PROVISION_PROFILE is not set; the Mac release will have no iCloud app library (docs/release.md, One-time setup)" >&2
+  elif [[ ! -f "$ONYX_PROVISION_PROFILE" ]]; then
+    fail "ONYX_PROVISION_PROFILE names no file: $ONYX_PROVISION_PROFILE"
+  fi
+fi
+
 # --locked is how CI builds: a lock that was not refreshed fails here.
 cargo check --locked -p onyx-app -p onyx-core 2>&1 | tail -1
 [[ -z "$(git status --porcelain)" ]] || fail "uncommitted changes; the tag would not hold them"

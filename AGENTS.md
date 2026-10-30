@@ -2,11 +2,11 @@
 
 ## What this is
 
-**Onyx** is a note-taking app: a folder of plain markdown files, a vault, shown in a sidebar, and a note drawn as it reads while you write it, as Obsidian's live preview does. Rust and GPUI, for macOS, Windows and Linux, built to the Alkaline Software constitution; it took the place of MiniNotes, a Swift menu bar app, at v0.5.0.
+**Onyx** is a note-taking app: a folder of plain markdown files, a vault, shown in a sidebar, and a note drawn as it reads while you write it, as Obsidian's live preview does. Rust and GPUI, built to the Alkaline Software constitution; it took the place of MiniNotes, a Swift menu bar app, at v0.5.0. **Only the Mac version is published.** The code keeps the constitution's Windows and Linux paths, but no release is cut for them and nothing is checked there; iOS and iPadOS are wanted later, and nothing is done for them yet.
 
 ## The one idea
 
-**The file is the note.** Onyx keeps nothing of its own about a note: no database, no index, no copy. The sidebar is the folder as the disk has it, the editor holds the file's text exactly, and a note is written whole a moment after the last keystroke and before it is left. Another app may write the same folder, and Onyx follows (`docs/window.md`, The vault). This is why a vault made elsewhere opens as it is, and why nothing is lost when Onyx is not running.
+**The file is the note.** Onyx keeps nothing of its own about a note: no database, no index, no copy. The sidebar is the folder as the disk has it, the editor holds the file's text exactly, and a note is written whole when it is left, never while it is typed. Another app may write the same folder, and Onyx follows (`docs/window.md`, The vault). This is why a vault made elsewhere opens as it is, and why nothing is lost when Onyx is not running.
 
 ## The standard
 
@@ -20,7 +20,7 @@ Onyx is held to the bar of the work that wins Awwwards, the Webbys and the FWA (
 
 Each is here because breaking it loses data or brings back a fixed bug. The doc named has the story.
 
-- **A note is written whole, through `onyx_core::vault::write`**, a temp file and a rename, never in place and never in part. (`docs/window.md`)
+- **A note is written whole, through `onyx_core::vault::write`**, a temp file and a rename, never in place and never in part, and only when it is left or at ⌘S, never on a keystroke or a timer. (`docs/window.md`)
 - **A note that has changes is never replaced by what the disk holds.** The disk's text goes in only while nothing is unsaved. (`docs/window.md`)
 - **Nothing goes straight off the disk.** A note or a folder deleted goes to the system's trash (`vault::trash`). (`docs/window.md`)
 - **The editor never slices a line at a byte that is not a character's boundary**, and the caret steps by grapheme (`lines::Doc`). (`docs/editor.md`)
@@ -40,7 +40,7 @@ Each is here because breaking it loses data or brings back a fixed bug. The doc 
 | You are about to touch | Read first |
 |---|---|
 | `editor.rs`, `lines.rs`, `markdown.rs`: the live preview, the caret, the keys, the modes | `docs/editor.md` |
-| `shell.rs`, `ui_state.rs`, `main.rs`: the sidebar, the vault, a note's life, the strip, the landing page, the menus; `onyx-core/src/vault.rs` | `docs/window.md` |
+| `shell.rs`, `tabs.rs`, `ui_state.rs`, `main.rs`: the sidebar, the vault, a note's life, the tabs, the strip, the landing page, the menus; `onyx-core/src/vault.rs` | `docs/window.md` |
 | `settings.rs`, `look.rs`, `fonts.rs`, `assets.rs`, `themes/onyx.json`, `scripts/icon/`; anything a person sees, new or changed | `docs/design.md`, then the doc of the part it is in |
 | `sys.rs`, `csd.rs`, `update.rs`, `process.rs`, `vendor/`, `Cargo.toml`, `.github/workflows/`, any `cfg` for an OS | `docs/platform.md` |
 | Checking a change in the window from a script | `docs/probing.md` |
@@ -60,7 +60,8 @@ crates/onyx-core/          everything without a window
   tests/core.rs
 crates/onyx-app/           the window
   src/main.rs                menus, key bindings, the main window, the probe's variables
-  src/shell.rs               the frame, the sidebar (the vault's tree), the strip, the landing page, a note's life
+  src/shell.rs               the frame, the sidebar (the vault's tree), the strip, the landing page, a note's life, the tabs
+  src/tabs.rs                the tabs' drawing and motion: a folder's on one pill, the plate, the widths
   src/editor.rs              the live-preview editor: layout, paint, the caret, the keys, the input method
   src/lines.rs               a note's text as lines: places, graphemes, edits, undo
   src/markdown.rs            what each line is and every inline span with its marks
@@ -76,7 +77,7 @@ crates/onyx-app/           the window
   src/i18n.rs                the window's words in eight languages
   src/sys.rs                 per-system calls
   src/csd.rs                 the window's own buttons where the system draws none
-  src/ui_state.rs            what the window remembers: bounds, sidebar, vault, note, mode, recent vaults
+  src/ui_state.rs            what the window remembers: bounds, sidebar, vault, tabs, note, mode, recent vaults
   assets/ themes/ locales/   icons, fonts, the app icon; the palette; the words
   macos/ windows/ linux/     what each system's package needs
 vendor/                    the toolkit and the blocks crate, each with an UPSTREAM.md

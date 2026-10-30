@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
+use gpui_component::tooltip::ManagedTooltipExt as _;
 use gpui_component::{h_flex, ActiveTheme as _, Icon, Sizable as _};
 
 /// A menu or a list coming in, and going out.
@@ -318,6 +319,12 @@ impl Motion {
         (p.2 > 0 && p.1.elapsed() < FOLD_ANIM).then_some((on, p.2))
     }
 
+    /// How far a presence's change has run, eased as it is drawn, and 1
+    /// once it is over or was never asked.
+    pub fn progress(&self, id: &str) -> f32 {
+        self.presences.borrow().get(id).map(|p| ease_out_quint()((p.1.elapsed().as_secs_f32() / FOLD_ANIM.as_secs_f32()).min(1.))).unwrap_or(1.)
+    }
+
     /// A switch, for what is on or off: the track fills with the accent
     /// and the knob slides to its end, both over a moment. A press
     /// anywhere on it turns it.
@@ -363,8 +370,10 @@ impl Motion {
     /// chosen one paints its own plate, so nothing flashes. `fill` shares
     /// the width it is given among the choices.
     #[allow(clippy::type_complexity)]
-    pub fn segmented<V: 'static>(&self, control: &'static str, options: Vec<(&'static str, &'static str, SharedString)>, current: &'static str, fill: bool, on: Rc<dyn Fn(&mut V, &'static str, &mut Window, &mut Context<V>)>, cx: &mut Context<V>) -> AnyElement {
-        let (pad, seg_h, seg_px, seg_text, round) = (px(3.), px(22.), px(11.), px(12.5), px(6.));
+    pub fn segmented<V: 'static>(&self, control: &'static str, options: Vec<(&'static str, &'static str, SharedString)>, current: &'static str, fill: bool, icons: bool, on: Rc<dyn Fn(&mut V, &'static str, &mut Window, &mut Context<V>)>, cx: &mut Context<V>) -> AnyElement {
+        // With `icons`, a segment is its icon alone and its word is said
+        // on hover.
+        let (pad, seg_h, seg_px, seg_text, round) = (px(3.), px(22.), px(if icons { 8. } else { 11. }), px(12.5), px(6.));
         let theme = cx.theme().clone();
         let dark = theme.mode.is_dark();
         let track_bg = if dark { theme.tab_bar_segmented } else { theme.muted };
@@ -443,8 +452,8 @@ impl Motion {
                     .hover(|s| s.text_color(theme.foreground))
                     .when(active, |d| d.font_weight(FontWeight::MEDIUM))
                     .on_click(cx.listener(move |this, _, window, cx| on(this, key, window, cx)))
-                    .when(!icon.is_empty(), |d| d.child(Icon::default().path(icon).with_size(seg_text + px(1.5))))
-                    .child(label)
+                    .when(!icon.is_empty(), |d| d.child(Icon::default().path(icon).with_size(if icons { px(15.) } else { seg_text + px(1.5) })))
+                    .map(|d| if icons { d.managed_tooltip(move |window, cx| tip(label.clone(), window, cx)) } else { d.child(label) })
             }));
         h_flex()
             .id(SharedString::from(format!("{control}-track")))

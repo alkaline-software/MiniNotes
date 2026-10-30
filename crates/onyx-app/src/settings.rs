@@ -15,6 +15,8 @@ use std::time::Duration;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::scroll::ScrollableElement as _;
+use gpui_component::input::{Input, InputEvent, InputState};
+use gpui_component::tooltip::ManagedTooltipExt as _;
 use gpui_component::{h_flex, v_flex, ActiveTheme as _, Icon, Sizable as _};
 
 use onyx_core::config::Config;
@@ -45,7 +47,7 @@ pub const SETTINGS_CONTEXT: &str = "Settings";
 /// The sections in the rail's order: key, name, icon. About is last.
 pub const SECTIONS: &[(&str, &str, &str)] = &[
     ("appearance", phrase("Appearance"), "icons/palette.svg"),
-    ("editor", phrase("Editor"), "icons/typography.svg"),
+    ("text", phrase("Text"), "icons/a-large-small.svg"),
     ("about", phrase("About"), "icons/info.svg"),
 ];
 
@@ -101,6 +103,11 @@ pub fn open(shell: WeakEntity<Shell>, cx: &mut App) {
         move |window, cx| {
             let focus = cx.focus_handle();
             window.focus(&focus, cx);
+            // The installed-font fields are made with this window, since
+            // an input watches the window it was made in.
+            if let Some(s) = weak.upgrade() {
+                s.update(cx, |s, cx| s.make_font_inputs(window, cx));
+            }
             let view = cx.new(|cx| {
                 if let Some(s) = weak.upgrade() {
                     cx.observe(&s, |_, _, cx| cx.notify()).detach();
@@ -170,46 +177,35 @@ fn line(title: SharedString, detail: Option<SharedString>, control: AnyElement, 
         .into_any_element()
 }
 
-/// A card of tiles: each face drawn in itself, the chosen one on a plate
-/// with a ring of the accent. The tiles share the card's width.
-fn tiles(items: Vec<(&'static str, SharedString, SharedString, bool, bool)>, pick: Rc<dyn Fn(&mut Shell, &'static str, &mut Window, &mut Context<Shell>)>, theme: &gpui_component::Theme, cx: &mut Context<Shell>) -> AnyElement {
-    h_flex()
-        .p(px(14.))
-        .gap(px(10.))
-        .flex_wrap()
-        .children(items.into_iter().map(|(key, label, family, mono, chosen)| {
-            let pick = pick.clone();
-            v_flex()
-                .id(SharedString::from(format!("tile-{key}")))
-                .w(px(120.))
-                .h(px(76.))
-                .items_center()
-                .justify_center()
-                .gap(px(4.))
-                .rounded(px(8.))
-                .border_2()
-                .border_color(if chosen { theme.primary } else { theme.border })
-                .bg(if chosen { theme.primary.opacity(0.08) } else { theme.background.opacity(0.5) })
-                .cursor_pointer()
-                .hover(|s| s.bg(theme.foreground.opacity(0.04)))
-                .on_click(cx.listener(move |this, _, window, cx| pick(this, key, window, cx)))
-                .child(div().font_family(family).text_size(px(if mono { 20. } else { 24. })).line_height(px(28.)).child(if mono { "{ }" } else { "Aa" }))
-                .child(div().text_size(px(11.5)).text_color(theme.muted_foreground).child(label))
-        }))
-        .into_any_element()
-}
-
 impl Shell {
     pub(crate) fn render_settings(&mut self, focus: FocusHandle, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
         let section = self.settings_section;
         let rows = match section {
-            "editor" => self.editor_rows(cx),
+            "text" if self.settings_page == "size" => self.size_rows(cx),
+            "text" => self.fonts_rows(cx),
             "about" => self.about_rows(cx),
             _ => self.appearance_rows(window, cx),
         };
         let title = SECTIONS.iter().find(|(k, _, _)| *k == section).map(|(_, name, _)| t(name)).unwrap_or(t("Appearance"));
-        let language = (section == "appearance").then(|| self.language_pill(cx));
+        // At the title's right: Appearance has the language, Text its two
+        // pages, Fonts and Size.
+        let language = match section {
+            "appearance" => Some(self.language_pill(cx)),
+            "text" => Some(self.motion.segmented(
+                "text-page",
+                vec![("fonts", "", t("Fonts").into()), ("size", "", t("Size").into())],
+                self.settings_page,
+                false,
+                false,
+                Rc::new(|this: &mut Self, key, _, cx| {
+                    this.settings_page = key;
+                    cx.notify();
+                }),
+                cx,
+            )),
+            _ => None,
+        };
         let pick = Rc::new(|this: &mut Self, what: &'static str, id: SharedString, window: &mut Window, cx: &mut Context<Self>| this.settings_pick(what, id, window, cx));
         let close = Rc::new(|this: &mut Self, cx: &mut Context<Self>| {
             this.menus.close(cx);
@@ -298,7 +294,7 @@ impl Shell {
                             this.settings_section = key;
                             this.settings_scroll.set_offset(point(px(0.), px(0.)));
                             this.menus.close(cx);
-                            this.save_ui_now(window, cx);
+                            this.save_section(window, cx);
                         }
                         cx.notify();
                     }))
@@ -320,6 +316,7 @@ impl Shell {
                 _ => "system",
             },
             true,
+            false,
             Rc::new(|this: &mut Self, key, window, cx| {
                 this.cfg.app.appearance = key.to_string();
                 let _ = Config::edit(|c| c.app.appearance = key.to_string());
@@ -366,49 +363,167 @@ impl Shell {
 
     /// Editor: the faces a note is set in, each a tile drawn in itself;
     /// the words' size; and how wide a line runs.
-    fn editor_rows(&mut self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    /// Text, Fonts: the note's face, serifs over sans serifs, and code's
+    /// face, each on a tile drawn in itself, as emaki has them.
+    fn fonts_rows(&mut self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let theme = cx.theme().clone();
-        let text_face = self.cfg.editor.text_face.clone();
-        let text_tiles = tiles(
-            crate::fonts::TEXT_FACES.iter().map(|f| (f.key, t(f.name).to_string().into(), SharedString::from(f.family), false, f.key == text_face)).collect(),
-            Rc::new(|this: &mut Self, key, _, cx| {
-                this.cfg.editor.text_face = key.to_string();
-                let _ = Config::edit(|c| c.editor.text_face = key.to_string());
-                this.push_look(cx);
-                cx.notify();
-            }),
-            &theme,
-            cx,
-        );
-        let mono_face = self.cfg.editor.mono_face.clone();
-        let mono_tiles = tiles(
-            crate::fonts::MONO_FACES.iter().map(|f| (f.key, t(f.name).to_string().into(), SharedString::from(f.family), true, f.key == mono_face)).collect(),
-            Rc::new(|this: &mut Self, key, _, cx| {
-                this.cfg.editor.mono_face = key.to_string();
-                let _ = Config::edit(|c| c.editor.mono_face = key.to_string());
-                this.push_look(cx);
-                cx.notify();
-            }),
-            &theme,
-            cx,
-        );
-        let sizes = div().w(px(CONTROL_W.into())).child(self.motion.segmented(
-            "text-size",
-            vec![("small", "", t("Small").into()), ("medium", "", t("Medium").into()), ("large", "", t("Large").into())],
-            match self.cfg.editor.text_size.as_str() {
-                "small" => "small",
-                "large" => "large",
-                _ => "medium",
-            },
-            true,
-            Rc::new(|this: &mut Self, key, _, cx| {
-                this.cfg.editor.text_size = key.to_string();
-                let _ = Config::edit(|c| c.editor.text_size = key.to_string());
-                this.push_look(cx);
-                cx.notify();
-            }),
-            cx,
-        ));
+        // A font of the machine's named in a field stands over the tiles,
+        // which then light none.
+        let e = &self.cfg.editor;
+        let text_now = if e.text_custom.trim().is_empty() { e.text_face.clone() } else { String::new() };
+        let mono_now = if e.mono_custom.trim().is_empty() { e.mono_face.clone() } else { String::new() };
+        let cjk_now = if e.cjk_custom.trim().is_empty() { e.cjk_face.clone() } else { String::new() };
+        let serif = crate::fonts::is_serif(&self.look.text_family);
+        let tile_ground = if theme.mode.is_dark() { theme.muted } else { theme.popover };
+        let tiles = |faces: &'static [crate::fonts::Face], now: &str, sample: &'static str, kind: u8, cx: &mut Context<Self>| {
+            h_flex().gap(px(8.)).children(faces.iter().map(|face| {
+                let (key, active) = (face.key, face.key == now);
+                let mono = kind == 1;
+                // A Chinese tile draws its sample in its own face; Auto in
+                // the one the note's face would get.
+                let family: SharedString = if kind == 2 { crate::fonts::cjk_family(face.key, serif) } else { face.family.into() };
+                let name: SharedString = if face.key == "auto" { t("Auto").into() } else { face.name.into() };
+                v_flex()
+                    .id(SharedString::from(format!("face-{key}")))
+                    .flex_1()
+                    .min_w_0()
+                    .h(px(64.))
+                    .px(px(12.))
+                    .justify_center()
+                    .gap(px(2.))
+                    .rounded(px(10.))
+                    .border_1()
+                    .cursor_pointer()
+                    .bg(tile_ground)
+                    .border_color(if active { theme.primary } else { theme.border })
+                    .when(active, |d| d.bg(theme.primary.opacity(0.08)))
+                    .when(!active, |d| d.hover(|s| s.border_color(theme.muted_foreground)))
+                    .on_click(cx.listener(move |this, _, window, cx| match kind {
+                        1 => this.set_mono_face(key, window, cx),
+                        2 => this.set_cjk_face(key, window, cx),
+                        _ => this.set_text_face(key, window, cx),
+                    }))
+                    // One line, at a size that fits the narrowest tile.
+                    .child(div().whitespace_nowrap().overflow_hidden().text_size(px(if mono { 14. } else { 20. })).line_height(px(25.)).font_family(family).child(sample))
+                    .child(div().truncate().text_size(px(11.5)).text_color(if active { theme.foreground } else { theme.muted_foreground }).child(name))
+            }))
+        };
+        // A kind of face, small and quiet, over its tiles.
+        let kind = |name: SharedString| div().text_size(px(11.5)).text_color(theme.muted_foreground).child(name);
+        let note = v_flex()
+            .p(px(14.))
+            .gap(px(8.))
+            .child(kind(t("Serif").into()))
+            .child(tiles(crate::fonts::SERIFS, &text_now, "Ag", 0, cx))
+            .child(div().h(px(4.)))
+            .child(kind(t("Sans serif").into()))
+            .child(tiles(crate::fonts::SANS, &text_now, "Ag", 0, cx))
+            .into_any_element();
+        let mono = div().p(px(14.)).child(tiles(crate::fonts::MONOS, &mono_now, "fn(0) -> 1", 1, cx)).into_any_element();
+        let cjk = div().p(px(14.)).child(tiles(crate::fonts::CJK, &cjk_now, "汉字", 2, cx)).into_any_element();
+        // Under each card: a field for a font of the machine's, as
+        // Obsidian offers one, which stands over the tiles while it has a name.
+        let field = |ix: usize, cx: &mut Context<Self>| -> Option<AnyElement> {
+            let input = self.font_inputs.as_ref()?[ix].clone();
+            let focus = input.read(cx).focus_handle(cx);
+            let plate = div().id(("font-field", ix)).track_focus(&focus).w(px(220.)).h(CONTROL_H).px(px(8.)).flex().items_center().rounded(px(8.)).bg(theme.muted).text_size(px(13.)).child(Input::new(&input).appearance(false)).into_any_element();
+            Some(line(t("Installed font").into(), Some(t("A font on this Mac, by its name in Font Book.").into()), plate, &theme))
+        };
+        let mut rows = Vec::new();
+        let titles: [SharedString; 3] = [t("Note font").into(), t("Monospace font").into(), t("Chinese font").into()];
+        for (title, body, ix) in [(titles[0].clone(), note, 0), (titles[1].clone(), mono, 1), (titles[2].clone(), cjk, 2)] {
+            let mut card = vec![body];
+            card.extend(field(ix, cx));
+            rows.push(group(Some(title), None, card, &theme));
+        }
+        rows
+    }
+
+    /// The three installed-font fields, made with the settings window and
+    /// holding what the settings say; a change is kept as typed.
+    pub(crate) fn make_font_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let values = [self.cfg.editor.text_custom.clone(), self.cfg.editor.mono_custom.clone(), self.cfg.editor.cjk_custom.clone()];
+        let inputs: [Entity<InputState>; 3] = std::array::from_fn(|ix| {
+            let input = cx.new(|cx| InputState::new(window, cx).placeholder(t("Font name")));
+            let value = values[ix].clone();
+            input.update(cx, |i, cx| i.set_value(value, window, cx));
+            cx.subscribe_in(&input, window, move |this, input, ev: &InputEvent, _, cx| {
+                if let InputEvent::Change = ev {
+                    let text = input.read(cx).value().to_string();
+                    this.set_custom_font(ix, text, cx);
+                }
+            })
+            .detach();
+            input
+        });
+        self.font_inputs = Some(inputs);
+    }
+
+    /// A font of the machine's named, or the name cleared.
+    fn set_custom_font(&mut self, ix: usize, name: String, cx: &mut Context<Self>) {
+        let e = &mut self.cfg.editor;
+        let slot = match ix {
+            1 => &mut e.mono_custom,
+            2 => &mut e.cjk_custom,
+            _ => &mut e.text_custom,
+        };
+        if *slot == name {
+            return;
+        }
+        *slot = name;
+        let e = self.cfg.editor.clone();
+        let _ = Config::edit(|c| c.editor = e);
+        self.push_look(cx);
+        cx.notify();
+    }
+
+    /// A tile chosen clears the field over it, so the tile takes effect.
+    fn clear_custom(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(inputs) = self.font_inputs.as_ref() {
+            let input = inputs[ix].clone();
+            input.update(cx, |i, cx| i.set_value("", window, cx));
+        }
+        match ix {
+            1 => self.cfg.editor.mono_custom.clear(),
+            2 => self.cfg.editor.cjk_custom.clear(),
+            _ => self.cfg.editor.text_custom.clear(),
+        }
+    }
+
+    /// Text, Size: a preset for both places at once, and each place's
+    /// size under it, which a preset sets. Custom is the person's own,
+    /// set here by a step, and kept while a preset is chosen; under a
+    /// preset the sizes are its and are only shown. Then the layout.
+    fn size_rows(&mut self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let theme = cx.theme().clone();
+        let sizes = self.cfg.editor.text_sizes();
+        let now = match self.cfg.editor.text_size.as_str() {
+            "small" => "small",
+            "large" => "large",
+            "custom" => "custom",
+            _ => "medium",
+        };
+        let presets = div()
+            .w(CONTROL_W)
+            .child(self.motion.segmented(
+                "text-size",
+                vec![("small", "", t("Small").into()), ("medium", "", t("Medium").into()), ("large", "", t("Large").into()), ("custom", "", t("Custom").into())],
+                now,
+                true,
+                false,
+                Rc::new(|this: &mut Self, key, _, cx| this.set_text_size(key, cx)),
+                cx,
+            ))
+            .into_any_element();
+        let custom = now == "custom";
+        let places: [(&'static str, SharedString, f32); 2] = [("note", t("Note text").into(), sizes.note), ("code", t("Code").into(), sizes.code)];
+        let rows = places
+            .into_iter()
+            .map(|(key, name, value)| {
+                let control = h_flex().gap(px(8.)).items_center().children(self.size_reset(key, value, custom, cx)).child(self.stepper(key, value, custom, cx)).into_any_element();
+                line(name, None, control, &theme)
+            })
+            .collect();
         let readable = self.motion.switch(
             "readable",
             self.cfg.editor.readable_width,
@@ -420,15 +535,144 @@ impl Shell {
             cx,
         );
         vec![
-            group(Some(t("Text").into()), None, vec![text_tiles], &theme),
-            group(Some(t("Code").into()), None, vec![mono_tiles], &theme),
-            group(
-                Some(t("Layout").into()),
-                None,
-                vec![line(t("Text size").into(), None, sizes.into_any_element(), &theme), line(t("Readable line length").into(), Some(t("Lines no wider than a comfortable line of reading, centered.").into()), readable, &theme)],
-                &theme,
-            ),
+            group(None, None, vec![line(t("Size").into(), None, presets, &theme)], &theme),
+            group(None, None, rows, &theme),
+            group(Some(t("Layout").into()), None, vec![line(t("Readable line length").into(), Some(t("Lines no wider than a comfortable line of reading, centered.").into()), readable, &theme)], &theme),
         ]
+    }
+
+    /// Under Custom, beside a size not Medium's: a button that puts it
+    /// back to Medium's, which is Custom's own until it is changed. It
+    /// comes and goes in motion (`presence`).
+    fn size_reset(&self, key: &'static str, value: f32, custom: bool, cx: &mut Context<Self>) -> Option<AnyElement> {
+        use onyx_core::config::TextSizes;
+        let medium = size_of(&TextSizes::MEDIUM, key);
+        let shown = custom && value != medium;
+        let id = format!("size-reset-{key}");
+        let moving = self.motion.presence(&id, shown, cx);
+        if !shown && moving.is_none() {
+            return None;
+        }
+        let theme = cx.theme().clone();
+        let hover = theme.foreground.opacity(0.07);
+        let tip: SharedString = tf("Reset to {size} pt", &[("size", &size_words(medium))]).into();
+        let button = div()
+            .id(SharedString::from(id.clone()))
+            .size(px(26.))
+            .flex_shrink_0()
+            .rounded(px(7.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .when(shown, |d| {
+                d.cursor_pointer().hover(move |s| s.bg(hover)).on_click(cx.listener(move |this, _, window, cx| {
+                    crate::widgets::swallow_click(window, cx);
+                    this.set_sizes(|s| *size_field(s, key) = medium, cx);
+                }))
+            })
+            .managed_tooltip(move |window, cx| crate::widgets::tip(tip.clone(), window, cx))
+            .child(Icon::default().path("icons/rotate.svg").with_size(px(14.)).text_color(theme.muted_foreground));
+        Some(match moving {
+            Some((coming, n)) => button.with_animation(ElementId::Name(format!("{id}-{n}").into()), Animation::new(crate::widgets::FOLD_ANIM).with_easing(ease_out_quint()), move |d, t| d.opacity(if coming { t } else { 1. - t })).into_any_element(),
+            None => button.into_any_element(),
+        })
+    }
+
+    /// A size in points: a step down, the number with "pt" after it, and
+    /// a step up, on the track a choice has. A step is a whole point.
+    /// Not `live`, it shows a preset's size and nothing in it moves it.
+    fn stepper(&self, key: &'static str, value: f32, live: bool, cx: &mut Context<Self>) -> AnyElement {
+        use onyx_core::config::TextSizes;
+        let theme = cx.theme().clone();
+        let dark = theme.mode.is_dark();
+        let track = if dark { theme.tab_bar_segmented } else { theme.muted };
+        let plate = if dark { theme.secondary_active } else { theme.popover };
+        let step = |up: bool, icon: &'static str| {
+            let to = TextSizes::step(value, up);
+            let able = live && to != value;
+            div()
+                .id(SharedString::from(format!("size-{key}-{}", if up { "up" } else { "down" })))
+                .size(px(22.))
+                .flex_shrink_0()
+                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .when(able, |d| {
+                    d.cursor_pointer().hover(move |s| s.bg(plate).shadow_sm()).on_click(cx.listener(move |this, _, window, cx| {
+                        crate::widgets::swallow_click(window, cx);
+                        this.set_sizes(|s| *size_field(s, key) = to, cx);
+                    }))
+                })
+                .child(Icon::default().path(icon).with_size(px(13.)).text_color(if able { theme.foreground } else { theme.muted_foreground.opacity(0.5) }))
+        };
+        let down = step(false, "icons/minus.svg");
+        let up = step(true, "icons/plus.svg");
+        h_flex()
+            .w(px(140.))
+            .h(CONTROL_H)
+            .p(px(3.))
+            .gap(px(4.))
+            .rounded(px(8.))
+            .bg(track)
+            .items_center()
+            .child(down)
+            .child(h_flex().flex_1().justify_center().items_center().gap(px(3.)).child(div().w(px(42.)).text_center().font_weight(FontWeight::MEDIUM).text_size(px(13.)).text_color(if live { theme.foreground } else { theme.muted_foreground }).child(size_words(value))).child(div().text_size(px(12.5)).text_color(theme.muted_foreground).child("pt")))
+            .child(up)
+            .into_any_element()
+    }
+
+    fn set_text_face(&mut self, key: &'static str, window: &mut Window, cx: &mut Context<Self>) {
+        self.clear_custom(0, window, cx);
+        self.cfg.editor.text_face = key.to_string();
+        self.save_editor(cx);
+    }
+
+    fn set_mono_face(&mut self, key: &'static str, window: &mut Window, cx: &mut Context<Self>) {
+        self.clear_custom(1, window, cx);
+        self.cfg.editor.mono_face = key.to_string();
+        self.save_editor(cx);
+    }
+
+    fn set_cjk_face(&mut self, key: &'static str, window: &mut Window, cx: &mut Context<Self>) {
+        self.clear_custom(2, window, cx);
+        self.cfg.editor.cjk_face = key.to_string();
+        self.save_editor(cx);
+    }
+
+    /// The editor's settings written, and every editor told.
+    fn save_editor(&mut self, cx: &mut Context<Self>) {
+        let e = self.cfg.editor.clone();
+        let _ = Config::edit(|c| c.editor = e);
+        self.push_look(cx);
+        cx.notify();
+    }
+
+    /// A preset chosen, or Custom: Custom begins as Medium's sizes the
+    /// first time, and keeps its own after.
+    fn set_text_size(&mut self, key: &'static str, cx: &mut Context<Self>) {
+        if key == "custom" && self.cfg.editor.sizes.is_none() {
+            self.cfg.editor.sizes = Some(onyx_core::config::TextSizes::MEDIUM);
+        }
+        self.cfg.editor.text_size = key.to_string();
+        let e = self.cfg.editor.clone();
+        let _ = Config::edit(|c| c.editor = e);
+        self.push_look(cx);
+        cx.notify();
+    }
+
+    /// One place's own size changed, under Custom, where they are set.
+    fn set_sizes(&mut self, change: impl FnOnce(&mut onyx_core::config::TextSizes), cx: &mut Context<Self>) {
+        if self.cfg.editor.text_size != "custom" {
+            return;
+        }
+        let mut sizes = self.cfg.editor.text_sizes();
+        change(&mut sizes);
+        self.cfg.editor.sizes = Some(sizes.clamped());
+        let e = self.cfg.editor.clone();
+        let _ = Config::edit(|c| c.editor = e);
+        self.push_look(cx);
+        cx.notify();
     }
 
     /// About: the title card, set as a film's first one is, the credits,
@@ -442,11 +686,10 @@ impl Shell {
             .items_center()
             .gap(px(8.))
             .py(px(26.))
-            .child(div().text_size(px(11.)).text_color(theme.muted_foreground).child(tf("{studio} presents", &[("studio", &"Alkaline Software")])))
+            .child(weave(&t("{studio} presents"), vec![("studio", link("studio-link", "Alkaline Software", "https://github.com/alkaline-software"))], h_flex().text_size(px(11.)).text_color(theme.muted_foreground).gap(px(0.))))
             .child(img("icon/icon-512.png").size(px(84.)))
             .child(wordmark("Onyx", 26., theme.primary, cx))
             .child(div().text_size(px(11.5)).text_color(theme.muted_foreground).child(tf("Version {version}", &[("version", &update::current_version())])))
-            .child(weave(&t("Made by {studio}."), vec![("studio", link("studio-link", "Alkaline Software", "https://github.com/alkaline-software"))], h_flex().pt(px(6.)).text_size(px(12.5)).gap(px(0.))))
             .child(
                 h_flex()
                     .pt(px(6.))
@@ -544,10 +787,10 @@ impl Shell {
         cx.notify();
     }
 
-    fn save_ui_now(&self, _window: &mut Window, cx: &mut Context<Self>) {
+    fn save_section(&self, _window: &mut Window, cx: &mut Context<Self>) {
         let mut ui = crate::ui_state::UiState::load();
         ui.settings_section = Some(self.settings_section.to_string());
-        ui.save();
+        ui.save_later();
         let _ = cx;
     }
 }
@@ -564,4 +807,28 @@ fn drag_region(el: Div) -> Div {
             window.start_window_move();
         }
     })
+}
+
+/// A place's size in the sizes, by the row's key.
+fn size_field<'a>(s: &'a mut onyx_core::config::TextSizes, key: &str) -> &'a mut f32 {
+    match key {
+        "code" => &mut s.code,
+        _ => &mut s.note,
+    }
+}
+
+fn size_of(s: &onyx_core::config::TextSizes, key: &str) -> f32 {
+    match key {
+        "code" => s.code,
+        _ => s.note,
+    }
+}
+
+/// A size as words: whole when it is, else with its tenth.
+fn size_words(v: f32) -> String {
+    if (v - v.round()).abs() < 0.05 {
+        format!("{}", v.round() as i32)
+    } else {
+        format!("{v:.1}")
+    }
 }

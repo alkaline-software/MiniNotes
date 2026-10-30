@@ -58,13 +58,31 @@ cargo packager --release -p onyx-app "${TARGET_FLAG[@]}" --formats app
 APP=dist/Onyx.app
 [[ -d "$APP" ]] || { echo "packager left no $APP" >&2; exit 1; }
 
+# The iCloud container, which makes the Onyx folder in iCloud Drive an
+# app library with the icon on it: the provisioning profile named by
+# ONYX_PROVISION_PROFILE goes in the bundle and the entitlements are
+# signed in, with the team's ID in place of TEAM_ID. Without the profile
+# the bundle is signed without them, since a bundle with restricted
+# entitlements and no profile is killed at launch.
+ENTITLEMENTS=()
+if [[ "$IDENTITY" != "-" && -n "${ONYX_PROVISION_PROFILE:-}" ]]; then
+  [[ -f "$ONYX_PROVISION_PROFILE" ]] || { echo "release-mac: ONYX_PROVISION_PROFILE names no file: $ONYX_PROVISION_PROFILE" >&2; exit 1; }
+  TEAM_ID="${APPLE_TEAM_ID:-$(security find-certificate -c "$IDENTITY" -p 2>/dev/null | openssl x509 -noout -subject 2>/dev/null | sed -n 's/.*OU *= *\([A-Z0-9]*\).*/\1/p')}"
+  [[ -n "$TEAM_ID" ]] || { echo "release-mac: no team ID; set APPLE_TEAM_ID" >&2; exit 1; }
+  cp "$ONYX_PROVISION_PROFILE" "$APP/Contents/embedded.provisionprofile"
+  sed "s/TEAM_ID/$TEAM_ID/g" crates/onyx-app/macos/Onyx.entitlements > dist/Onyx.entitlements
+  ENTITLEMENTS=(--entitlements dist/Onyx.entitlements)
+else
+  echo "release-mac: no ONYX_PROVISION_PROFILE; the bundle is signed without the iCloud container (docs/release.md)" >&2
+fi
+
 # Sign the bundle. The hardened runtime (--options runtime) and a secure
 # timestamp are what notarization requires; --deep reaches any helper
 # binary packed beside the app's own.
 if [[ "$IDENTITY" == "-" ]]; then
   codesign --force --deep --sign - "$APP"
 else
-  codesign --force --deep --sign "$IDENTITY" --options runtime --timestamp "$APP"
+  codesign --force --deep --sign "$IDENTITY" --options runtime --timestamp "${ENTITLEMENTS[@]}" "$APP"
 fi
 codesign --verify --deep --strict --verbose=2 "$APP"
 

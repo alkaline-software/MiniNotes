@@ -9,6 +9,7 @@ mod editor;
 mod file_icons;
 mod fonts;
 mod i18n;
+mod langs;
 mod lines;
 mod look;
 mod markdown;
@@ -16,6 +17,7 @@ mod menu;
 mod scroll;
 mod settings;
 mod shell;
+mod tabs;
 mod sys;
 mod ui_state;
 mod widgets;
@@ -25,7 +27,7 @@ use gpui_component::Root;
 
 use i18n::t;
 use onyx_core::config::Config;
-use shell::{CloseVault, Escape, NewFolder, NewNote, OpenSettings, OpenVault, Save, Shell, ShowLive, ShowReading, ShowSource, ToggleReading, ToggleSidebar, KEY_CONTEXT, MIN_W};
+use shell::{CloseTab, CloseVault, Escape, NewFolder, NewNote, NewVault, ReopenTab, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6, Tab7, Tab8, Tab9, OpenSettings, OpenVault, Save, Shell, ShowLive, ShowReading, ShowSource, ToggleReading, ToggleSidebar, KEY_CONTEXT, MIN_W};
 
 actions!(onyx_app, [Quit, CloseWindow, Hide, HideOthers, ShowAll, Minimize, Zoom, ToggleFullScreen]);
 
@@ -45,7 +47,21 @@ fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("escape", Escape, Some(editor::EDITOR_CONTEXT)),
         KeyBinding::new("escape", Escape, Some("Sheet")),
         KeyBinding::new("secondary-,", OpenSettings, None),
-        KeyBinding::new("secondary-w", CloseWindow, None),
+        KeyBinding::new("secondary-w", CloseTab, None),
+        KeyBinding::new("secondary-shift-w", CloseWindow, None),
+        KeyBinding::new("secondary-shift-t", ReopenTab, None),
+        KeyBinding::new("secondary-1", Tab1, None),
+        KeyBinding::new("secondary-2", Tab2, None),
+        KeyBinding::new("secondary-3", Tab3, None),
+        KeyBinding::new("secondary-4", Tab4, None),
+        KeyBinding::new("secondary-5", Tab5, None),
+        KeyBinding::new("secondary-6", Tab6, None),
+        KeyBinding::new("secondary-7", Tab7, None),
+        KeyBinding::new("secondary-8", Tab8, None),
+        KeyBinding::new("secondary-9", Tab9, None),
+        KeyBinding::new("alt-1", ShowLive, None),
+        KeyBinding::new("alt-2", ShowSource, None),
+        KeyBinding::new("alt-3", ShowReading, None),
         KeyBinding::new("secondary-q", Quit, None),
     ];
     keys.extend(editor::key_bindings());
@@ -72,11 +88,14 @@ pub(crate) fn app_menus() -> Vec<Menu> {
                 MenuItem::action(t("New Note"), NewNote),
                 MenuItem::action(t("New Folder"), NewFolder),
                 MenuItem::separator(),
+                MenuItem::action(t("New Vault…"), NewVault),
                 MenuItem::action(t("Open Vault…"), OpenVault),
                 MenuItem::action(t("Close Vault"), CloseVault),
                 MenuItem::separator(),
                 MenuItem::action(t("Save"), Save),
                 MenuItem::separator(),
+                MenuItem::action(t("Close Tab"), CloseTab),
+                MenuItem::action(t("Reopen Closed Tab"), ReopenTab),
                 MenuItem::action(t("Close Window"), CloseWindow),
             ],
         },
@@ -181,8 +200,8 @@ fn open_main_window(cx: &mut App) -> anyhow::Result<WindowHandle<Root>> {
             let asked = shell.downgrade();
             window.on_window_should_close(cx, move |window, cx| {
                 let _ = asked.update(cx, |s, cx| {
-                    s.save_now(cx);
-                    s.save_ui(window)
+                    s.save_all(cx);
+                    s.save_ui_now(window)
                 });
                 true
             });
@@ -197,7 +216,11 @@ fn open_main_window(cx: &mut App) -> anyhow::Result<WindowHandle<Root>> {
                     s.go(steps, window, cx);
                 }
                 if let Some(section) = section.as_deref() {
-                    s.open_settings(Some(settings::section_named(section)), window, cx);
+                    // `size` is Text's Size page.
+                    if section == "size" {
+                        s.settings_page = "size";
+                    }
+                    s.open_settings(Some(settings::section_named(if section == "size" { "text" } else { section })), window, cx);
                 }
                 if let Some(path) = shot {
                     s.shoot_later(path.into(), window, cx);
@@ -228,6 +251,7 @@ fn main() {
         gpui_component::init(cx);
         gpui_component::tooltip::set_label(|text, window, cx| widgets::tip(text, window, cx));
         sys::install_dock_icon();
+        sys::warm_icloud();
         let cfg = Config::load();
         i18n::set(&i18n::chosen(&cfg.app.language));
         fonts::install(cx);
@@ -236,6 +260,9 @@ fn main() {
 
         cx.on_action(|_: &Quit, cx| cx.quit());
         cx.on_action(|_: &CloseWindow, cx| with_active_window(cx, |w| w.remove_window()));
+        // ⌘W in a window with no tabs to close (the settings) closes it;
+        // the main window answers it first, above.
+        cx.on_action(|_: &CloseTab, cx| with_active_window(cx, |w| w.remove_window()));
         cx.on_action(|_: &Minimize, cx| with_active_window(cx, |w| w.minimize_window()));
         cx.on_action(|_: &Zoom, cx| with_active_window(cx, |w| w.zoom_window()));
         cx.on_action(|_: &ToggleFullScreen, cx| with_active_window(cx, |w| w.toggle_fullscreen()));

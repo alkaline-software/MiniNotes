@@ -46,6 +46,22 @@ fn an_override_is_never_written_back() {
 }
 
 #[test]
+fn text_sizes_are_a_preset_or_the_persons_own() {
+    use onyx_core::config::{EditorConfig, TextSizes};
+    let mut e = EditorConfig::default();
+    assert_eq!(e.text_sizes(), TextSizes::MEDIUM);
+    e.text_size = "large".into();
+    assert_eq!(e.text_sizes(), TextSizes::LARGE);
+    e.text_size = "custom".into();
+    assert_eq!(e.text_sizes(), TextSizes::MEDIUM, "custom with nothing set is medium");
+    e.sizes = Some(TextSizes { note: 40., code: 3. });
+    assert_eq!(e.text_sizes(), TextSizes { note: TextSizes::MOST, code: TextSizes::LEAST }, "a size out of range is held in");
+    assert_eq!(TextSizes::step(16., true), 17.);
+    assert_eq!(TextSizes::step(16.4, false), 16.);
+    assert_eq!(TextSizes::step(TextSizes::MOST, true), TextSizes::MOST);
+}
+
+#[test]
 fn a_write_leaves_no_temp_file() {
     let (dir, _g) = isolated();
     paths::write_json(&paths::state_dir().join("x.json"), &serde_json::json!({"a": 1})).unwrap();
@@ -96,6 +112,22 @@ fn the_tree_has_folders_first_in_the_file_managers_order() {
     let projects = &tree.children[0];
     assert_eq!(projects.children.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["Onyx", "Plan"]);
     assert_eq!(vault::notes(dir.path()).len(), 5);
+}
+
+#[test]
+fn a_new_vault_is_a_folder_and_a_taken_folder_is_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let v = vault::new_vault(dir.path(), " Notes ").unwrap();
+    assert_eq!(v, dir.path().join("Notes"));
+    assert!(v.is_dir());
+    std::fs::write(v.join("a.md"), "hi").unwrap();
+    let again = vault::new_vault(dir.path(), "Notes").unwrap();
+    assert_eq!(again, v);
+    assert!(v.join("a.md").is_file(), "a folder that is there is kept as it is");
+    std::fs::write(dir.path().join("file"), "").unwrap();
+    assert!(vault::new_vault(dir.path(), "file").is_err());
+    assert!(vault::new_vault(dir.path(), "").is_err());
+    assert!(vault::new_vault(dir.path(), "a/b").is_err());
 }
 
 #[test]

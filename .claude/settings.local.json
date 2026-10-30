@@ -96,7 +96,6 @@
       "Bash(sips:*)",
       "Bash(find:*)",
       "Bash(./scripts/create-dmg.sh:*)",
-      "Bash(./scripts/rebuild-and-relaunch.sh)",
       "Bash(gh auth:*)",
       "Bash(sed -i '' 's/MARKETING_VERSION = [0-9.]*;/MARKETING_VERSION = 0.2.0;/g' MiniNotes.xcodeproj/project.pbxproj)",
       "Bash(sed -i '' 's/CURRENT_PROJECT_VERSION = [0-9.]*;/CURRENT_PROJECT_VERSION = 0.2.0;/g' MiniNotes.xcodeproj/project.pbxproj)",
@@ -106,29 +105,6 @@
       "Bash(ditto -c -k --sequesterRsrc --keepParent '~/Library/Developer/Xcode/DerivedData/MiniNotes-dqmwdyrthfgyezeddoegrwdqawje/Build/Products/Release/MiniNotes.app' dist/MiniNotes-v0.2.1.zip)",
       "Bash(xcodebuild -project MiniNotes.xcodeproj -scheme MiniNotes -configuration Debug build -quiet)",
       "Bash(ditto:*)"
-    ]
-  },
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/Users/pingfan/Documents/GitHub/software/MiniNotes/scripts/mark-dirty.sh"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/Users/pingfan/Documents/GitHub/software/MiniNotes/scripts/rebuild-and-relaunch.sh"
-          }
-        ]
-      }
     ]
   }
 }

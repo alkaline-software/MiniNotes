@@ -1,4 +1,13 @@
 {
+  "A font on this Mac, by its name in Font Book.": {
+    "zh-Hans": "这台 Mac 上的字体，按字体册中的名称。",
+    "zh-Hant": "這台 Mac 上的字體，按字體簿中的名稱。",
+    "ja": "この Mac にあるフォント、Font Book での名前で。",
+    "ko": "이 Mac에 있는 글꼴, 서체 관리자의 이름으로.",
+    "fr": "Une police de ce Mac, par son nom dans Livre des polices.",
+    "de": "Eine Schrift auf diesem Mac, mit ihrem Namen in der Schriftsammlung.",
+    "es": "Una fuente de este Mac, por su nombre en Catálogo Tipográfico."
+  },
   "About": {
     "zh-Hans": "关于",
     "zh-Hant": "關於",
@@ -35,6 +44,15 @@
     "de": "Erscheinungsbild",
     "es": "Apariencia"
   },
+  "Auto": {
+    "zh-Hans": "自动",
+    "zh-Hant": "自動",
+    "ja": "自動",
+    "ko": "자동",
+    "fr": "Auto",
+    "de": "Automatisch",
+    "es": "Automático"
+  },
   "Bold": {
     "zh-Hans": "粗体",
     "zh-Hant": "粗體",
@@ -70,6 +88,51 @@
     "fr": "Rechercher les mises à jour",
     "de": "Nach Updates suchen",
     "es": "Buscar actualizaciones"
+  },
+  "Chinese font": {
+    "zh-Hans": "中文字体",
+    "zh-Hant": "中文字體",
+    "ja": "中国語のフォント",
+    "ko": "중국어 글꼴",
+    "fr": "Police chinoise",
+    "de": "Chinesische Schrift",
+    "es": "Fuente china"
+  },
+  "Choose": {
+    "zh-Hans": "选择",
+    "zh-Hant": "選擇",
+    "ja": "選択",
+    "ko": "선택",
+    "fr": "Choisir",
+    "de": "Auswählen",
+    "es": "Elegir"
+  },
+  "Choose…": {
+    "zh-Hans": "选择…",
+    "zh-Hant": "選擇…",
+    "ja": "選択…",
+    "ko": "선택…",
+    "fr": "Choisir…",
+    "de": "Auswählen…",
+    "es": "Elegir…"
+  },
+  "Close Tab": {
+    "zh-Hans": "关闭标签页",
+    "zh-Hant": "關閉標籤頁",
+    "ja": "タブを閉じる",
+    "ko": "탭 닫기",
+    "fr": "Fermer l'onglet",
+    "de": "Tab schließen",
+    "es": "Cerrar pestaña"
+  },
+  "Close Tab (⌘W)": {
+    "zh-Hans": "关闭标签页 (⌘W)",
+    "zh-Hant": "關閉標籤頁 (⌘W)",
+    "ja": "タブを閉じる (⌘W)",
+    "ko": "탭 닫기 (⌘W)",
+    "fr": "Fermer l'onglet (⌘W)",
+    "de": "Tab schließen (⌘W)",
+    "es": "Cerrar pestaña (⌘W)"
   },
   "Close Vault": {
     "zh-Hans": "关闭仓库",
@@ -116,6 +179,24 @@
     "de": "Pfad kopieren",
     "es": "Copiar la ruta"
   },
+  "Create": {
+    "zh-Hans": "创建",
+    "zh-Hant": "建立",
+    "ja": "作成",
+    "ko": "만들기",
+    "fr": "Créer",
+    "de": "Erstellen",
+    "es": "Crear"
+  },
+  "Custom": {
+    "zh-Hans": "自定义",
+    "zh-Hant": "自訂",
+    "ja": "カスタム",
+    "ko": "사용자 지정",
+    "fr": "Personnalisée",
+    "de": "Eigene",
+    "es": "Personalizado"
+  },
   "Cut": {
     "zh-Hans": "剪切",
     "zh-Hant": "剪下",
@@ -152,14 +233,14 @@
     "de": "Bearbeiten",
     "es": "Edición"
   },
-  "Editor": {
-    "zh-Hans": "编辑器",
-    "zh-Hant": "編輯器",
-    "ja": "エディタ",
-    "ko": "편집기",
-    "fr": "Éditeur",
-    "de": "Editor",
-    "es": "Editor"
+  "Edit (⌥1)": {
+    "zh-Hans": "编辑 (⌥1)",
+    "zh-Hant": "編輯 (⌥1)",
+    "ja": "編集 (⌥1)",
+    "ko": "편집 (⌥1)",
+    "fr": "Édition (⌥1)",
+    "de": "Bearbeiten (⌥1)",
+    "es": "Edición (⌥1)"
   },
   "File": {
     "zh-Hans": "文件",
@@ -169,6 +250,24 @@
     "fr": "Fichier",
     "de": "Ablage",
     "es": "Archivo"
+  },
+  "Font name": {
+    "zh-Hans": "字体名称",
+    "zh-Hant": "字體名稱",
+    "ja": "フォント名",
+    "ko": "글꼴 이름",
+    "fr": "Nom de la police",
+    "de": "Schriftname",
+    "es": "Nombre de la fuente"
+  },
+  "Fonts": {
+    "zh-Hans": "字体",
+    "zh-Hant": "字體",
+    "ja": "フォント",
+    "ko": "글꼴",
+    "fr": "Polices",
+    "de": "Schriften",
+    "es": "Fuentes"
   },
   "Hide Onyx": {
     "zh-Hans": "隐藏 Onyx",
@@ -188,14 +287,23 @@
     "de": "Andere ausblenden",
     "es": "Ocultar otros"
   },
-  "Inter": {
-    "zh-Hans": "Inter",
-    "zh-Hant": "Inter",
-    "ja": "Inter",
-    "ko": "Inter",
-    "fr": "Inter",
-    "de": "Inter",
-    "es": "Inter"
+  "iCloud Drive": {
+    "zh-Hans": "iCloud 云盘",
+    "zh-Hant": "iCloud 雲碟",
+    "ja": "iCloud Drive",
+    "ko": "iCloud Drive",
+    "fr": "iCloud Drive",
+    "de": "iCloud Drive",
+    "es": "iCloud Drive"
+  },
+  "Installed font": {
+    "zh-Hans": "已安装的字体",
+    "zh-Hant": "已安裝的字體",
+    "ja": "インストール済みのフォント",
+    "ko": "설치된 글꼴",
+    "fr": "Police installée",
+    "de": "Installierte Schrift",
+    "es": "Fuente instalada"
   },
   "It was not moved to the trash: {why}": {
     "zh-Hans": "未能移到废纸篓：{why}",
@@ -223,15 +331,6 @@
     "fr": "Jade",
     "de": "Jade",
     "es": "Jade"
-  },
-  "JetBrains Mono": {
-    "zh-Hans": "JetBrains Mono",
-    "zh-Hant": "JetBrains Mono",
-    "ja": "JetBrains Mono",
-    "ko": "JetBrains Mono",
-    "fr": "JetBrains Mono",
-    "de": "JetBrains Mono",
-    "es": "JetBrains Mono"
   },
   "Large": {
     "zh-Hans": "大",
@@ -269,15 +368,6 @@
     "de": "Zeilen nicht breiter als eine angenehme Lesezeile, zentriert.",
     "es": "Líneas no más anchas que una línea de lectura cómoda, centradas."
   },
-  "Made by {studio}.": {
-    "zh-Hans": "由 {studio} 制作。",
-    "zh-Hant": "由 {studio} 製作。",
-    "ja": "{studio} が制作しています。",
-    "ko": "{studio}이(가) 만들었습니다.",
-    "fr": "Conçu par {studio}.",
-    "de": "Gemacht von {studio}.",
-    "es": "Hecho por {studio}."
-  },
   "Medium": {
     "zh-Hans": "中",
     "zh-Hant": "中",
@@ -295,6 +385,15 @@
     "fr": "Placer dans le Dock",
     "de": "Im Dock ablegen",
     "es": "Minimizar"
+  },
+  "Monospace font": {
+    "zh-Hans": "等宽字体",
+    "zh-Hant": "等寬字體",
+    "ja": "等幅フォント",
+    "ko": "고정폭 글꼴",
+    "fr": "Police à chasse fixe",
+    "de": "Festbreitenschrift",
+    "es": "Fuente monoespaciada"
   },
   "Moss": {
     "zh-Hans": "苔绿",
@@ -350,6 +449,24 @@
     "de": "Neue Notiz (⌘N)",
     "es": "Nueva nota (⌘N)"
   },
+  "New Vault": {
+    "zh-Hans": "新建仓库",
+    "zh-Hant": "新增儲存庫",
+    "ja": "新しい保管庫",
+    "ko": "새 보관소",
+    "fr": "Nouveau coffre",
+    "de": "Neuer Tresor",
+    "es": "Nueva bóveda"
+  },
+  "New Vault…": {
+    "zh-Hans": "新建仓库…",
+    "zh-Hant": "新增儲存庫…",
+    "ja": "新しい保管庫…",
+    "ko": "새 보관소…",
+    "fr": "Nouveau coffre…",
+    "de": "Neuer Tresor…",
+    "es": "Nueva bóveda…"
+  },
   "No note is open.": {
     "zh-Hans": "没有打开的笔记。",
     "zh-Hant": "沒有打開的筆記。",
@@ -377,6 +494,33 @@
     "de": "Kein Tresor",
     "es": "Sin bóveda"
   },
+  "Note font": {
+    "zh-Hans": "笔记字体",
+    "zh-Hant": "筆記字體",
+    "ja": "ノートのフォント",
+    "ko": "노트 글꼴",
+    "fr": "Police des notes",
+    "de": "Schrift der Notizen",
+    "es": "Fuente de las notas"
+  },
+  "Note text": {
+    "zh-Hans": "笔记正文",
+    "zh-Hant": "筆記正文",
+    "ja": "ノートの本文",
+    "ko": "노트 본문",
+    "fr": "Texte des notes",
+    "de": "Text der Notizen",
+    "es": "Texto de las notas"
+  },
+  "Notes": {
+    "zh-Hans": "笔记",
+    "zh-Hant": "筆記",
+    "ja": "ノート",
+    "ko": "노트",
+    "fr": "Notes",
+    "de": "Notizen",
+    "es": "Notas"
+  },
   "Notes live in a folder of your own, a vault, as plain markdown files.": {
     "zh-Hans": "笔记以纯 Markdown 文件存放在你自己的文件夹里，也就是仓库。",
     "zh-Hant": "筆記以純 Markdown 檔案存放在你自己的檔案夾裡，也就是儲存庫。",
@@ -386,6 +530,15 @@
     "de": "Notizen liegen in einem eigenen Ordner, einem Tresor, als einfache Markdown-Dateien.",
     "es": "Las notas viven en una carpeta tuya, una bóveda, como simples archivos Markdown."
   },
+  "On this computer": {
+    "zh-Hans": "在这台电脑上",
+    "zh-Hant": "在這台電腦上",
+    "ja": "このコンピュータ上",
+    "ko": "이 컴퓨터에",
+    "fr": "Sur cet ordinateur",
+    "de": "Auf diesem Computer",
+    "es": "En este equipo"
+  },
   "Open": {
     "zh-Hans": "打开",
     "zh-Hant": "打開",
@@ -394,15 +547,6 @@
     "fr": "Ouvrir",
     "de": "Öffnen",
     "es": "Abrir"
-  },
-  "Open a vault…": {
-    "zh-Hans": "打开一个仓库…",
-    "zh-Hant": "打開一個儲存庫…",
-    "ja": "保管庫を開く…",
-    "ko": "보관소 열기…",
-    "fr": "Ouvrir un coffre…",
-    "de": "Einen Tresor öffnen…",
-    "es": "Abrir una bóveda…"
   },
   "Open Vault…": {
     "zh-Hans": "打开仓库…",
@@ -457,6 +601,15 @@
     "fr": "Lire",
     "de": "Lesen",
     "es": "Leer"
+  },
+  "Read (⌥3)": {
+    "zh-Hans": "阅读 (⌥3)",
+    "zh-Hant": "閱讀 (⌥3)",
+    "ja": "閲覧 (⌥3)",
+    "ko": "읽기 (⌥3)",
+    "fr": "Lire (⌥3)",
+    "de": "Lesen (⌥3)",
+    "es": "Leer (⌥3)"
   },
   "Readable line length": {
     "zh-Hans": "易读的行宽",
@@ -530,6 +683,24 @@
     "de": "Umbenennen …",
     "es": "Renombrar…"
   },
+  "Reopen Closed Tab": {
+    "zh-Hans": "重新打开关闭的标签页",
+    "zh-Hant": "重新開啟關閉的標籤頁",
+    "ja": "閉じたタブを再び開く",
+    "ko": "닫은 탭 다시 열기",
+    "fr": "Rouvrir l'onglet fermé",
+    "de": "Geschlossenen Tab wieder öffnen",
+    "es": "Reabrir pestaña cerrada"
+  },
+  "Reset to {size} pt": {
+    "zh-Hans": "重设为 {size} 磅",
+    "zh-Hant": "重設為 {size} 點",
+    "ja": "{size} pt に戻す",
+    "ko": "{size}pt로 되돌리기",
+    "fr": "Remettre à {size} pt",
+    "de": "Auf {size} pt zurücksetzen",
+    "es": "Restablecer a {size} pt"
+  },
   "Reveal in Finder": {
     "zh-Hans": "在访达中显示",
     "zh-Hant": "在 Finder 中顯示",
@@ -548,6 +719,15 @@
     "de": "Rosé",
     "es": "Rosa"
   },
+  "Sans serif": {
+    "zh-Hans": "无衬线",
+    "zh-Hant": "無襯線",
+    "ja": "サンセリフ",
+    "ko": "산세리프",
+    "fr": "Sans serif",
+    "de": "Sans serif",
+    "es": "Sans serif"
+  },
   "Save": {
     "zh-Hans": "存储",
     "zh-Hant": "儲存",
@@ -565,6 +745,15 @@
     "fr": "Tout sélectionner",
     "de": "Alles auswählen",
     "es": "Seleccionar todo"
+  },
+  "Serif": {
+    "zh-Hans": "衬线",
+    "zh-Hant": "襯線",
+    "ja": "セリフ",
+    "ko": "세리프",
+    "fr": "Serif",
+    "de": "Serif",
+    "es": "Serif"
   },
   "Settings": {
     "zh-Hans": "设置",
@@ -638,6 +827,15 @@
     "de": "Seitenleiste (⌘⇧B)",
     "es": "Barra lateral (⌘⇧B)"
   },
+  "Size": {
+    "zh-Hans": "大小",
+    "zh-Hant": "大小",
+    "ja": "サイズ",
+    "ko": "크기",
+    "fr": "Taille",
+    "de": "Größe",
+    "es": "Tamaño"
+  },
   "Small": {
     "zh-Hans": "小",
     "zh-Hant": "小",
@@ -656,14 +854,14 @@
     "de": "Quelltext",
     "es": "Código fuente"
   },
-  "Source Serif": {
-    "zh-Hans": "Source Serif",
-    "zh-Hant": "Source Serif",
-    "ja": "Source Serif",
-    "ko": "Source Serif",
-    "fr": "Source Serif",
-    "de": "Source Serif",
-    "es": "Source Serif"
+  "Source (⌥2)": {
+    "zh-Hans": "源代码 (⌥2)",
+    "zh-Hant": "原始碼 (⌥2)",
+    "ja": "ソース (⌥2)",
+    "ko": "소스 (⌥2)",
+    "fr": "Source (⌥2)",
+    "de": "Quelltext (⌥2)",
+    "es": "Código fuente (⌥2)"
   },
   "System": {
     "zh-Hans": "跟随系统",
@@ -673,15 +871,6 @@
     "fr": "Système",
     "de": "System",
     "es": "Sistema"
-  },
-  "System Mono": {
-    "zh-Hans": "系统等宽",
-    "zh-Hant": "系統等寬",
-    "ja": "システム等幅",
-    "ko": "시스템 고정폭",
-    "fr": "Mono du système",
-    "de": "System-Mono",
-    "es": "Mono del sistema"
   },
   "Teal": {
     "zh-Hans": "青绿",
@@ -700,15 +889,6 @@
     "fr": "Texte",
     "de": "Text",
     "es": "Texto"
-  },
-  "Text size": {
-    "zh-Hans": "文字大小",
-    "zh-Hant": "文字大小",
-    "ja": "文字サイズ",
-    "ko": "글자 크기",
-    "fr": "Taille du texte",
-    "de": "Textgröße",
-    "es": "Tamaño del texto"
   },
   "The check did not go through: {why}": {
     "zh-Hans": "检查未完成：{why}",
@@ -781,6 +961,15 @@
     "fr": "Le coffre n’est pas surveillé : {why}",
     "de": "Der Tresor wird nicht überwacht: {why}",
     "es": "La bóveda no se está vigilando: {why}"
+  },
+  "The vault was not made: {why}": {
+    "zh-Hans": "仓库未能创建：{why}",
+    "zh-Hant": "儲存庫未能建立：{why}",
+    "ja": "保管庫を作成できませんでした：{why}",
+    "ko": "보관소를 만들지 못했습니다: {why}",
+    "fr": "Le coffre n'a pas été créé : {why}",
+    "de": "Der Tresor wurde nicht erstellt: {why}",
+    "es": "La bóveda no se creó: {why}"
   },
   "Toggle Full Screen": {
     "zh-Hans": "进入或退出全屏幕",
@@ -898,6 +1087,15 @@
     "fr": "{studio} présente",
     "de": "{studio} präsentiert",
     "es": "{studio} presenta"
+  },
+  "↩ to create, Esc to cancel": {
+    "zh-Hans": "↩ 创建，Esc 取消",
+    "zh-Hant": "↩ 建立，Esc 取消",
+    "ja": "↩ で作成、Esc でキャンセル",
+    "ko": "↩ 만들기, Esc 취소",
+    "fr": "↩ pour créer, Esc pour annuler",
+    "de": "↩ zum Erstellen, Esc zum Abbrechen",
+    "es": "↩ para crear, Esc para cancelar"
   },
   "↩ to rename, Esc to cancel": {
     "zh-Hans": "按 ↩ 重命名，按 Esc 取消",

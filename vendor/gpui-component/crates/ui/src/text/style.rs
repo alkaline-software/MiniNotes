@@ -63,6 +63,10 @@ pub struct TextViewStyle {
     /// Where the language icons a chunk's head wears are, as asset paths
     /// (`icons/lang`): `<dir>/r.svg`. Empty, no icon. (Studio addition.)
     pub chunk_icons: SharedString,
+    /// Every fenced block with a language gets the head a chunk has, its
+    /// language's mark and name, with no fold: a note's code reads with
+    /// its language named, as its editor shows it. (Studio addition.)
+    pub lang_marks: bool,
     /// Where a Quarto callout's icons are, as asset paths: `<dir>/note.svg`,
     /// `tip`, `warning`, `caution`, `important`, one color each. Empty, no
     /// icon. (Studio addition.)
@@ -101,6 +105,7 @@ impl PartialEq for TextViewStyle {
             && self.front_matter == other.front_matter
             && self.chunk_words == other.chunk_words
             && self.chunk_icons == other.chunk_icons
+            && self.lang_marks == other.lang_marks
             && self.callout_icons == other.callout_icons
             && self.is_dark == other.is_dark
     }
@@ -123,6 +128,7 @@ impl Default for TextViewStyle {
             front_matter: false,
             chunk_words: ["Fold".into(), "Unfold".into()],
             chunk_icons: SharedString::default(),
+            lang_marks: false,
             callout_icons: SharedString::default(),
             is_dark: false,
         }

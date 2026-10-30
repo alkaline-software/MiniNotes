@@ -339,6 +339,8 @@ upstream revision finds them.
 
 62. `crates/base/src/input/base/state.rs` (`cursor_wrap_row`, `start_of_line`, `end_of_line`), `movement.rs` (`update_preferred_column`, `end`, `vertical_offset`): ⌘→ on a row that wraps stops after its last word, the spaces it broke at left; and a caret at a soft wrap put there as a row's end is on that row, as it is drawn, for ⌘←, ⌘→, and the column and row ↑ and ↓ start from. Upstream went past the spaces to the next row's start, where the caret was drawn a space past the word, ⌘← went to the start of the whole line and ↓ two rows down.
 
+63. `crates/ui/src/text/style.rs` (`TextViewStyle::lang_marks`), `node.rs` (`chunk_icon`, `chunk_label`, `CodeBlock::render`): with `lang_marks` a plain fenced block with a language (```` ```python ````) has the head a chunk has, its language's mark and name at the top right, and no fold or chevron; a chunk keeps its fold. For Onyx, whose editor shows the mark on every block, so a note reads as it is edited.
+
 ## Updating
 
 Check out the new upstream revision, copy the four crates over these, re-apply

@@ -4528,6 +4528,7 @@ dependencies = [
  "opener",
  "pulldown-cmark",
  "raw-window-handle",
+ "ropey",
  "rust-embed",
  "serde",
  "serde_json",

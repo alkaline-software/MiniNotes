@@ -15,6 +15,27 @@ pub fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"))
 }
 
+/// iCloud Drive's folder on this machine, when iCloud Drive is set up:
+/// a vault made in it is synced by the system, with no account of
+/// Onyx's own. On a Mac it is `~/Library/Mobile Documents/com~apple~CloudDocs`,
+/// on Windows the folder iCloud for Windows keeps; Linux has none.
+pub fn icloud_drive() -> Option<PathBuf> {
+    let dir = if cfg!(target_os = "macos") {
+        home().join("Library/Mobile Documents/com~apple~CloudDocs")
+    } else if cfg!(target_os = "windows") {
+        home().join("iCloudDrive")
+    } else {
+        return None;
+    };
+    dir.is_dir().then_some(dir)
+}
+
+/// The person's documents folder, where a vault goes when no other
+/// place is chosen; the home folder when the system names none.
+pub fn documents() -> PathBuf {
+    dirs::document_dir().unwrap_or_else(home)
+}
+
 /// The data folder.
 pub fn root() -> PathBuf {
     match std::env::var_os("ONYX_HOME").filter(|v| !v.is_empty()) {
