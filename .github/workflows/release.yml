@@ -6,6 +6,9 @@ name: release
 # draft GitHub Release under stable names, so a site can link
 # `releases/latest/download/<name>` and never go stale. The release's notes
 # are the tag's section of CHANGELOG.md.
+#
+# Only the Mac is published, so the matrix has only its rows. The steps for
+# Windows and Linux stay: a row for each is all they need to run again.
 on:
   push:
     tags: ["v*"]
@@ -33,30 +36,6 @@ jobs:
             target: x86_64-apple-darwin
             formats: dmg
             asset: Onyx-mac-x64.dmg
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            formats: velopack
-            rid: win-x64
-            asset: Onyx-windows-x64-setup.exe
-          # Windows on ARM runs the x64 build only under emulation, and a
-          # Linux on ARM (any VM on an Apple silicon Mac) not at all.
-          - os: windows-11-arm
-            target: aarch64-pc-windows-msvc
-            formats: velopack
-            rid: win-arm64
-            asset: Onyx-windows-arm64-setup.exe
-          # The older Ubuntu for the installers: a binary linked against an
-          # older glibc runs on more distributions.
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            formats: appimage,deb
-            asset: Onyx-linux-x64.AppImage
-            snap: amd64
-          - os: ubuntu-22.04-arm
-            target: aarch64-unknown-linux-gnu
-            formats: appimage,deb
-            asset: Onyx-linux-arm64.AppImage
-            snap: arm64
     runs-on: ${{ matrix.os }}
     env:
       # Whether a secret is set, as a word a step's `if` can read: a step
@@ -268,7 +247,7 @@ jobs:
           sudo snap install snapcraft --classic
           snapcraft upload --release=${{ vars.SNAP_CHANNEL }} snap/onyx_${{ matrix.snap }}.snap
 
-  # One release, made once the six builds are in, with the tag's section of
+  # One release, made once the builds are in, with the tag's section of
   # CHANGELOG.md as its notes. Each package job making the release itself
   # leaves a copy of an auto-generated changelog on the page per job.
   release:

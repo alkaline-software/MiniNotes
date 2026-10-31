@@ -4,17 +4,15 @@ What to run, in order, to cut a release, and what to do when a step fails.
 
 ## What a release is
 
-A `v*` tag pushed to the repository runs `release.yml`. Six package jobs build the app on macOS (both architectures, from the Apple Silicon runner), Windows and Linux (x64 and ARM each), then one `release` job creates the GitHub Release as a draft, with the tag's section of `CHANGELOG.md` as its notes, and attaches the installers under stable names:
+A `v*` tag pushed to the repository runs `release.yml`. Two package jobs build the app for macOS (both architectures, from the Apple Silicon runner), then one `release` job creates the GitHub Release as a draft, with the tag's section of `CHANGELOG.md` as its notes, and attaches the installers under stable names:
 
 | asset | built by | signed |
 |---|---|---|
 | `Onyx-mac-arm64.dmg`, `Onyx-mac-x64.dmg` | CI, then replaced from the signer's Mac | Developer ID, notarized, stapled |
-| `Onyx-windows-x64-setup.exe`, `Onyx-windows-arm64-setup.exe` | CI (Velopack) | Azure Artifact Signing, once its secrets are set |
-| `AlkalineSoftware.Onyx-<version>-win-<arch>-full.nupkg`, `releases.win-<arch>.json` | CI (Velopack) | the package and feed a Windows copy updates itself from |
-| `Onyx-linux-x64.AppImage`, `Onyx-linux-arm64.AppImage` | CI | n/a |
-| `Onyx-linux-x64.deb`, `Onyx-linux-arm64.deb` | CI | n/a |
 
-The names never change, so `releases/latest/download/<name>` links stay valid. The Microsoft Store's `.msix` packages and the snaps are kept with the run (`store-*`, `snap-*`), not on the release.
+The names never change, so `releases/latest/download/<name>` links stay valid.
+
+Only the Mac is published, so the workflow's matrix has only its rows. Its steps for Windows and Linux stay, and a row for each runs them again; with those rows back, the release also carries `Onyx-windows-<arch>-setup.exe`, Velopack's `AlkalineSoftware.Onyx-<version>-win-<arch>-full.nupkg` and `releases.win-<arch>.json`, and `Onyx-linux-<arch>.AppImage` and `.deb`, for x64 and ARM each.
 
 ## One-time setup on a Mac
 
@@ -56,7 +54,7 @@ The notary credential is out of reach while the screen is locked (When something
 ### 4. Push, wait for the tests, then tag
 
 ```
-git push origin HEAD:main            # starts rust.yml on all six runners
+git push origin HEAD:main            # starts rust.yml on every runner
 gh run list --workflow rust --limit 1
 gh run watch <run-id> --exit-status
 git tag -a vX.Y.Z -m "Onyx vX.Y.Z"
@@ -80,7 +78,7 @@ Each run ends with `built dist/Onyx-mac-<arch>.dmg (X.Y.Z, <arch>, signed, notar
 
 ### 6. Install and run it on Windows and Linux
 
-In VMs, from the draft itself:
+Skipped while only the Mac is published. Once they are, in VMs, from the draft itself:
 
 ```
 gh release download vX.Y.Z --dir dist/try --pattern 'Onyx-windows-*-setup.exe' --pattern 'Onyx-linux-arm64.*'
