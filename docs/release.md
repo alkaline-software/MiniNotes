@@ -169,6 +169,7 @@ The client secret expires within two years. `Get-AuthenticodeSignature .\Onyx-wi
 Every failure met while cutting a release gets a line here once it is solved, with what would have caught it.
 
 - **"No Keychain password item found for profile"** while the profile is in place: the screen is locked, and the profile's keychain opens only while it is unlocked. Keep the display on (step 3) and notarize while the person is at the Mac.
+- **`generate_icon_enum: failed to read` a path that is gone**: the repository's folder was moved or renamed with `target/` in it, and build scripts' saved output still names the old path, which `release-check.sh` finds. `cargo clean`, and let a release build start clean rather than from objects that hold the old path.
 - **A test passes here and fails on Windows or Linux**: wait for `rust.yml` before tagging (step 4).
 - **The Windows job cannot find a type**: a line used on every platform leans on something gated for Unix; `release-check.sh` runs the type check that finds it.
 - **`hdiutil create` fails with "Resource busy"** on a runner: `release-mac.sh` tries five times; re-run only that job with `gh run rerun <run-id> --failed`.
