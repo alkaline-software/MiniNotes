@@ -119,6 +119,16 @@ impl Mode {
     }
 }
 
+/// A link a right click was on: what it goes to, its words, and the
+/// whole of it as written.
+#[derive(Clone, Debug)]
+pub struct MenuLink {
+    pub url: Option<String>,
+    pub note: Option<String>,
+    pub words: String,
+    pub raw: String,
+}
+
 /// What the editor tells the view around it.
 pub enum EditorEvent {
     /// The text changed.
@@ -127,6 +137,9 @@ pub enum EditorEvent {
     OpenLink(String),
     /// A `[[note]]` link was clicked: the name it gives.
     OpenNote(String),
+    /// A right click: where, and the link it was on. The window makes the
+    /// menu, as it does every menu.
+    Menu(Point<Pixels>, Option<MenuLink>),
 }
 
 /// The faces and size a note is set in, from the settings.
@@ -168,7 +181,9 @@ const FENCE_PAD: f32 = 6.;
 const CELL_X: f32 = 10.;
 const CELL_Y: f32 = 5.;
 const BLINK: Duration = Duration::from_millis(530);
-/// The caret is kept this far from the top and foot of what shows.
+/// The caret is kept this far from the top and foot of what shows: out
+/// of the page's edge fade, which counts as out of sight (`FADE_H` in
+/// the shell). The two change together.
 const SCROLL_MARGIN: f32 = 28.;
 
 /// `ONYX_TRACE=1` prints what each layout and paint costs, for a probe.
@@ -210,6 +225,9 @@ pub struct Editor {
     /// A drag under way: how the press began (a caret, a word, a line),
     /// and the range that press selected.
     drag: Option<(Grain, Pos, Pos)>,
+    /// A link pressed as the note reads, followed at the release unless
+    /// the press became a selection, so a selection can begin on a link.
+    pressed_link: Option<Target>,
     want_scroll: bool,
     /// The column ↑ and ↓ keep to, in pixels from the words' left.
     preferred_x: Option<f32>,
@@ -347,6 +365,7 @@ impl Editor {
             blinking: false,
             focused: false,
             drag: None,
+            pressed_link: None,
             want_scroll: false,
             preferred_x: None,
             origin: Point::default(),
@@ -471,8 +490,12 @@ impl Editor {
     }
 
     /// Whether the note takes no change: a note that is read only, or
-    /// one shown as it reads.
-    fn locked(&self) -> bool {
+    /// one shown as it reads. Nothing else about it is less: it selects,
+    /// copies and finds as any note does, so the lock is on what changes
+    /// the text, each change checking it, and never on the pointer or
+    /// the keyboard. A task's box is the one thing ticked through it
+    /// (`toggle_task_on`).
+    pub(crate) fn locked(&self) -> bool {
         self.read_only || self.mode == Mode::Reading
     }
 
@@ -506,9 +529,100 @@ impl Editor {
         self.move_to(end, false, cx);
     }
 
+    pub fn has_selection(&self) -> bool {
+        let (a, b) = self.sel.range();
+        a != b
+    }
+
+    /// The link at a point of the page, as its menu needs it.
+    fn link_at(&self, x: f32, y: f32) -> Option<MenuLink> {
+        let Some(Hit::Link(target)) = self.hit(x, y) else { return None };
+        let at = self.doc.offset_of(self.pos_at(x, y, &self.cache.borrow())?);
+        let (url, note) = match target {
+            Target::Link(url) => (Some(url), None),
+            Target::Note(name) => (None, Some(name)),
+        };
+        let line = self.pos_at(x, y, &self.cache.borrow())?.line;
+        let span = self.analysis.line_spans[line].iter().map(|&ix| &self.analysis.spans[ix]).find(|s| matches!(s.kind, SpanKind::Link(_) | SpanKind::WikiLink(_) | SpanKind::Image(_)) && s.range.start <= at && at <= s.range.end);
+        let slice = |a: usize, b: usize| self.doc.slice(self.doc.pos_of(a), self.doc.pos_of(b));
+        let (words, raw) = span.map(|s| (slice(s.open.end, s.close.start), slice(s.range.start, s.range.end))).unwrap_or_default();
+        Some(MenuLink { url, note, words, raw })
+    }
+
+    /// A right click off a link: a press inside the selection leaves it,
+    /// one on a word selects the word, as a Mac's text does, and one on
+    /// nothing puts the caret there, for a paste.
+    fn select_for_menu(&mut self, x: f32, y: f32, cx: &mut Context<Self>) {
+        let Some(p) = self.pos_at(x, y, &self.cache.borrow()) else { return };
+        let (a, b) = self.sel.range();
+        if a != b && a <= p && p <= b {
+            return;
+        }
+        let (from, to) = self.grain_range(p, Grain::Word);
+        self.sel = if from != to && !self.doc.slice(from, to).trim().is_empty() { Sel { anchor: from, head: to } } else { Sel::caret(p) };
+        self.preferred_x = None;
+        self.kick_blink(cx);
+    }
+
+    fn follow(&mut self, target: Target, cx: &mut Context<Self>) {
+        match target {
+            Target::Link(url) => cx.emit(EditorEvent::OpenLink(url)),
+            Target::Note(name) => cx.emit(EditorEvent::OpenNote(name)),
+        }
+    }
+
+    /// For a script: the caret to the start of a line, as a key moves it.
+    pub fn move_to_line(&mut self, line: usize, cx: &mut Context<Self>) {
+        self.move_to(Pos { line, col: 0 }, false, cx);
+    }
+
     pub fn selection_text(&self) -> String {
         let (a, b) = self.sel.range();
         self.doc.slice(a, b)
+    }
+
+    /// What ⌘C takes: the file's own text, or as the note reads the words
+    /// that show and nothing that does not.
+    pub fn copied_text(&self) -> String {
+        if self.mode == Mode::Reading {
+            self.shown_text()
+        } else {
+            self.selection_text()
+        }
+    }
+
+    /// The selection as it reads: each line by the rule that hides its
+    /// marks in the drawing (`hidden_on`), with the lines drawn as no
+    /// words (a fence, a rule, a heading's underline, a table's bar row)
+    /// left out, and a table's rows as their cells, a tab between them,
+    /// whole, since a table is selected a line at a time.
+    fn shown_text(&self) -> String {
+        let (a, b) = self.sel.range();
+        if a == b {
+            return String::new();
+        }
+        let mut lines = Vec::new();
+        for line in a.line..=b.line {
+            let text = self.doc.line(line);
+            let from = if line == a.line { a.col } else { 0 };
+            let to = if line == b.line { b.col } else { text.len() };
+            match &self.analysis.lines[line].kind {
+                LineKind::FenceOpen(_) | LineKind::FenceClose | LineKind::SetextUnderline | LineKind::Rule => {}
+                LineKind::TableFirst(t) | LineKind::TableRow(t) => {
+                    let table = &self.analysis.tables[*t];
+                    let row = match line - table.first {
+                        0 => Some(0),
+                        1 => None,
+                        below => Some(below - 1),
+                    };
+                    if let Some(cells) = row.and_then(|r| table.rows.get(r)) {
+                        lines.push(cells.join("\t"));
+                    }
+                }
+                _ => lines.push(markdown::visible_part(text, from, to, &self.hidden_on(line))),
+            }
+        }
+        lines.join("\n")
     }
 
     fn reanalyze(&mut self) {
@@ -798,16 +912,16 @@ impl Editor {
     }
 
     fn copy(&mut self, _: &input::Copy, _: &mut Window, cx: &mut Context<Self>) {
-        let text = self.selection_text();
+        let text = self.copied_text();
         if !text.is_empty() {
-            cx.write_to_clipboard(ClipboardItem::new_string(text));
+            crate::widgets::to_clipboard(text, cx);
         }
     }
 
     fn cut(&mut self, _: &input::Cut, _: &mut Window, cx: &mut Context<Self>) {
-        let text = self.selection_text();
+        let text = self.copied_text();
         if !text.is_empty() {
-            cx.write_to_clipboard(ClipboardItem::new_string(text));
+            crate::widgets::to_clipboard(text, cx);
             if !self.locked() {
                 self.insert("", cx);
                 self.doc.end_step();
@@ -944,7 +1058,13 @@ impl Editor {
         self.toggle_task_on(line, cx);
     }
 
+    /// A task's box ticked. It is the one change Read mode lets in, by a
+    /// press on the box alone, as a box on a page is there to be ticked;
+    /// ⌘↩ is the keyboard's and is locked (`toggle_task`).
     fn toggle_task_on(&mut self, line: usize, cx: &mut Context<Self>) {
+        if self.read_only {
+            return;
+        }
         let text = self.doc.line(line).to_string();
         let (_, body_start) = quote_line(&text).unwrap_or((0, 0));
         let before = self.sel;
@@ -1766,7 +1886,7 @@ impl EntityInputHandler for Editor {
     /// False, so a key goes to the bindings before an input method. gpui
     /// on a Mac hands every printable key, ⌥ chords among them, to an
     /// active Chinese, Japanese or Korean input method first while the
-    /// handler says it takes text, and the method swallowed ⌥1, ⌥2 and ⌥3.
+    /// handler says it takes text, and the method swallowed the ⌃ and ⌥ chords of the modes and the widths.
     /// Nothing of typing changes: a key no binding takes still reaches the
     /// method and composes, and this is read nowhere else on a Mac.
     fn accepts_text_input(&self, _: &mut Window, _: &mut Context<Self>) -> bool {
@@ -1934,7 +2054,6 @@ struct PaintInfo {
     sel: Sel,
     marked: Option<(Pos, Pos)>,
     caret_on: bool,
-    reading: bool,
     find: Rc<Vec<(Pos, Pos)>>,
 }
 
@@ -2026,12 +2145,11 @@ impl Element for EditorElement {
                 sel: e.sel,
                 marked: e.marked,
                 caret_on: e.caret_shown(),
-                reading: e.mode == Mode::Reading,
                 find: e.find.clone(),
             }
         });
         window.handle_input(&info.focus, ElementInputHandler::new(bounds, editor.clone()), cx);
-        window.set_cursor_style(if info.over_link { CursorStyle::PointingHand } else if info.reading { CursorStyle::Arrow } else { CursorStyle::IBeam }, &prepaint.hitbox);
+        window.set_cursor_style(if info.over_link { CursorStyle::PointingHand } else { CursorStyle::IBeam }, &prepaint.hitbox);
 
         let cache = info.cache.borrow();
         let view = window.content_mask().bounds;
@@ -2228,10 +2346,11 @@ impl Element for EditorElement {
             let (x, y) = (f32::from(ev.position.x - bounds.origin.x), f32::from(ev.position.y - bounds.origin.y));
             stamp("mouse down");
             ed.update(cx, |e, cx| {
-                // As the note reads a press follows a link or ticks a
-                // task and places no caret, and takes no keyboard.
+                // As the note reads a press selects as anywhere else, for
+                // ⌘C and the find to work on, and a link waits for the
+                // release, so a selection can begin on one.
                 let reading = e.mode == Mode::Reading;
-                if !reading && !e.focus.is_focused(window) {
+                if !e.focus.is_focused(window) {
                     window.focus(&e.focus, cx);
                 }
                 match e.hit(x, y) {
@@ -2239,16 +2358,12 @@ impl Element for EditorElement {
                         e.toggle_task_on(line, cx);
                         e.doc.end_step();
                     }
-                    Some(Hit::Link(target)) if ev.modifiers.secondary() || ev.click_count == 1 => {
-                        match target {
-                            Target::Link(url) => cx.emit(EditorEvent::OpenLink(url)),
-                            Target::Note(name) => cx.emit(EditorEvent::OpenNote(name)),
-                        }
-                    }
-                    _ => {
-                        if reading {
-                            return;
-                        }
+                    Some(Hit::Link(target)) if !reading && (ev.modifiers.secondary() || ev.click_count == 1) => e.follow(target, cx),
+                    hit => {
+                        e.pressed_link = match hit {
+                            Some(Hit::Link(target)) if reading && (ev.modifiers.secondary() || ev.click_count == 1) => Some(target),
+                            _ => None,
+                        };
                         let p = match e.pos_at(x, y, &e.cache.borrow()) {
                             Some(p) => p,
                             None => return,
@@ -2273,6 +2388,27 @@ impl Element for EditorElement {
             });
             crate::widgets::swallow_click(window, cx);
         });
+        let (hitbox, ed) = (prepaint.hitbox.clone(), editor.clone());
+        window.on_mouse_event(move |ev: &MouseDownEvent, phase, window, cx| {
+            if phase != DispatchPhase::Bubble || ev.button != MouseButton::Right || !hitbox.is_hovered(window) {
+                return;
+            }
+            cx.stop_propagation();
+            let (x, y) = (f32::from(ev.position.x - bounds.origin.x), f32::from(ev.position.y - bounds.origin.y));
+            ed.update(cx, |e, cx| {
+                // On a link nothing moves: the keyboard taken here would
+                // wake the marks on the caret's line.
+                let link = e.link_at(x, y);
+                if link.is_none() {
+                    if !e.focus.is_focused(window) {
+                        window.focus(&e.focus, cx);
+                    }
+                    e.select_for_menu(x, y, cx);
+                }
+                cx.emit(EditorEvent::Menu(ev.position, link));
+                cx.notify();
+            });
+        });
         let ed = editor.clone();
         window.on_mouse_event(move |ev: &MouseMoveEvent, phase, window, cx| {
             if phase != DispatchPhase::Bubble {
@@ -2287,11 +2423,18 @@ impl Element for EditorElement {
                         if e.sel != (Sel { anchor, head }) {
                             e.sel = Sel { anchor, head };
                             e.want_scroll = true;
+                            if anchor != head {
+                                e.pressed_link = None;
+                            }
                             cx.notify();
                         }
                     }
                 } else {
-                    let over = window.mouse_position().x >= bounds.origin.x && matches!(e.hit(x, y), Some(Hit::Link(_)) | Some(Hit::Task(_)));
+                    let over = window.mouse_position().x >= bounds.origin.x && match e.hit(x, y) {
+                        Some(Hit::Link(_)) => true,
+                        Some(Hit::Task(_)) => !e.read_only,
+                        None => false,
+                    };
                     if over != e.over_link {
                         e.over_link = over;
                         cx.notify();
@@ -2302,15 +2445,38 @@ impl Element for EditorElement {
         let ed = editor;
         window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
             if phase == DispatchPhase::Bubble {
-                ed.update(cx, |e, _| e.drag = None);
+                ed.update(cx, |e, cx| {
+                    if let Some(target) = e.pressed_link.take() {
+                        e.follow(target, cx);
+                    }
+                    // A line half in the page's edge fade takes a press on
+                    // its half in sight. It is lifted clear here, not at
+                    // the press, so the words do not move under a drag
+                    // about to begin.
+                    if e.drag.take().is_some() {
+                        e.want_scroll = true;
+                        cx.notify();
+                    }
+                });
             }
         });
     }
 }
 
 impl Editor {
+    /// A place, past the hidden marks it stands before.
+    fn past_hidden(&self, p: Pos) -> Pos {
+        let mut hidden = self.hidden_on(p.line);
+        hidden.sort_by_key(|r| r.start);
+        let col = hidden.iter().fold(p.col, |col, r| if r.start <= col && col < r.end { r.end } else { col });
+        Pos { line: p.line, col }
+    }
+
     /// What a press selects at `p`: the place, the word, the line.
     fn grain_range(&self, p: Pos, grain: Grain) -> (Pos, Pos) {
+        // A press on a word's first letter maps to the end of what stands
+        // before it, which may be a hidden mark. The word is what shows.
+        let p = if grain == Grain::Word { self.past_hidden(p) } else { p };
         match grain {
             Grain::Char => (p, p),
             Grain::Word => {

@@ -58,8 +58,8 @@ pub fn accent_hex(key: &str, dark: bool) -> &'static str {
 
 /// The accent as the frame wears it: the dark appearance's shade in both,
 /// since the light one is 2 to 1 on the frame's graphite.
-pub fn on_frame(key: &str) -> &'static str {
-    accent(key).dark[0]
+pub fn on_frame(key: &str) -> (&'static str, &'static str) {
+    (accent(key).dark[0], ON_DARK)
 }
 
 /// The inks code is written in, one set an appearance: everything that

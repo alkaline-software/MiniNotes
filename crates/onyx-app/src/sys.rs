@@ -94,6 +94,15 @@ pub const REVEAL_LABEL: &str = if cfg!(target_os = "macos") {
     phrase("Show in folder")
 };
 
+/// What opening a folder in the file manager is called where we are.
+pub const OPEN_FOLDER_LABEL: &str = if cfg!(target_os = "macos") {
+    phrase("Open in Finder")
+} else if cfg!(target_os = "windows") {
+    phrase("Open in Explorer")
+} else {
+    phrase("Open folder")
+};
+
 /// The Dock icon, for a bare binary run from `target/`. A bundle carries
 /// the same picture as its `.icns`.
 #[cfg(target_os = "macos")]

@@ -7,17 +7,18 @@
 //! others give way, and a closed one's room is taken up the same way.
 //!
 //! A tab is as wide as its name needs, no wider; when the row has no
-//! room for all of them, the widest give way first. A tab is dragged to
+//! room for all of them, the widest give way first. Whatever changes the
+//! row's room, each width and the row's place head for their new values
+//! from where they stand, so the tabs glide however far or often it
+//! changes. A tab is dragged to
 //! another place on its pill and a pill along the row, by its handle,
 //! and ⌘ held shows the number that goes to each tab.
 //!
 //! The tabs themselves (which notes are open, which shows) are the
 //! shell's (`Shell::tabs`); this is their drawing and their motion.
 
-use std::cell::Cell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui::prelude::FluentBuilder as _;
@@ -70,16 +71,20 @@ fn pill_chrome(tabs: usize) -> f32 {
     PILL_LEAD + PILL_PAD + TAB_GAP * (tabs.max(1) as f32 - 1.)
 }
 
-/// One tab's width on its way from one size to another.
+/// A length of the row on its way from one value to another: a tab's
+/// width, how far in the pills start, how far the row is scrolled.
 #[derive(Clone, Copy)]
 struct Width {
     from: f32,
     to: f32,
     at: Instant,
-    serial: u32,
 }
 
 impl Width {
+    fn at_rest(value: f32, at: Instant) -> Self {
+        Self { from: value, to: value, at }
+    }
+
     fn now(&self) -> f32 {
         let t = (self.at.elapsed().as_secs_f32() / TAB_ANIM.as_secs_f32()).min(1.);
         self.from + (self.to - self.from) * ease_out_quint()(t)
@@ -87,6 +92,15 @@ impl Width {
 
     fn done(&self) -> bool {
         self.at.elapsed() >= TAB_ANIM
+    }
+
+    /// Set off for `to` from where it stands, unless it is going there.
+    /// Asked again at every frame of a window being dragged wider, it
+    /// follows with no jump and catches up when the drag stops.
+    fn head(&mut self, to: f32, at: Instant) {
+        if (self.to - to).abs() > 0.5 {
+            *self = Self { from: self.now(), to, at };
+        }
     }
 }
 
@@ -154,9 +168,14 @@ pub struct Tabs {
     plate: Plate,
     /// When each folder's pill came, for its track to be let out.
     born: HashMap<PathBuf, Instant>,
-    /// The row's width as last painted, read at the next draw.
-    row_w: Rc<Cell<f32>>,
+    /// The row's width, given at each draw.
+    row_w: f32,
     row_seen: f32,
+    /// How far in from the row's left the pills start: half of what they
+    /// leave over, so they stand in the middle, none once they fill it.
+    lead: Option<Width>,
+    /// The row's scroll on its way to the showing tab.
+    glide: Option<Width>,
     /// How many tabs the widths were last set for.
     n: usize,
     /// The showing tab is brought into the row at the next sync.
@@ -236,9 +255,11 @@ impl Tabs {
     }
 
     /// Give every tab its width and the plate its tab, at every draw.
-    /// A change in the row's own width (the window resized, the sidebar
-    /// folded) is followed at once.
-    pub fn sync(&mut self, items: &[Item], shown: Option<&Path>, window: &Window, cx: &App) {
+    /// `row_w` is figured by the caller as the frame is built and never
+    /// measured off the last one: a measure taken while a frame is drawn
+    /// can ask for no other frame (`docs/window.md`).
+    pub fn sync(&mut self, row_w: f32, items: &[Item], shown: Option<&Path>, window: &Window, cx: &App) {
+        self.row_w = row_w;
         if !cx.has_active_drag() {
             self.drag_tab = None;
             self.drag_pill = None;
@@ -271,6 +292,8 @@ impl Tabs {
         }
         if keys.is_empty() {
             self.n = 0;
+            self.lead = None;
+            self.glide = None;
             return;
         }
         let now = Instant::now();
@@ -281,11 +304,16 @@ impl Tabs {
             }
         }
         // The row less the plus square's room, which is always there.
-        let row = (self.row_w.get() - PLUS_ROOM).max(0.);
+        let row = (row_w - PLUS_ROOM).max(0.);
         let n = keys.len();
         let chrome: f32 = self.groups.iter().map(|(_, keys)| pill_chrome(keys.len())).sum::<f32>() + PILL_GAP * (self.groups.len() as f32 - 1.).max(0.);
         let wanted: Vec<f32> = keys.iter().map(|k| items.iter().find(|i| i.path == *k).map(|i| self.fit(&i.title, window, cx)).unwrap_or(TAB_MIN)).collect();
         let targets = if row <= 0. { wanted.clone() } else { Self::share(&wanted, row - chrome) };
+        let lead = ((row - chrome - targets.iter().sum::<f32>()) / 2.).max(0.);
+        match &mut self.lead {
+            Some(l) => l.head(lead, now),
+            None => self.lead = Some(Width::at_rest(lead, now)),
+        }
         // The tab shown is brought into the row when the tabs are wider
         // than it and the tab stands outside: by sum, as every place here is.
         let reveal = (self.reveal || (row - self.row_seen).abs() > 0.5) && row > 0.;
@@ -313,8 +341,14 @@ impl Tabs {
                 let seen = -f32::from(at.x);
                 let to = if left < seen { left } else if right > seen + row { right - row } else { seen };
                 if (to - seen).abs() > 0.5 {
-                    self.scroll.set_offset(point(px(-to), at.y));
+                    self.glide.get_or_insert(Width::at_rest(seen, now)).head(to, now);
                 }
+            }
+        }
+        if let Some(g) = self.glide {
+            self.scroll.set_offset(point(px(-g.now()), self.scroll.offset().y));
+            if g.done() {
+                self.glide = None;
             }
         }
         let moved = n != self.n && !first;
@@ -322,23 +356,16 @@ impl Tabs {
         for (key, target) in keys.iter().zip(targets) {
             match self.widths.get_mut(key) {
                 None => {
-                    self.widths.insert(key.clone(), Width { from: if moved { 0. } else { target }, to: target, at: now, serial: 0 });
+                    self.widths.insert(key.clone(), Width { from: if moved { 0. } else { target }, to: target, at: now });
                 }
-                Some(w) if (w.to - target).abs() > 0.5 => {
-                    let running = !w.done();
-                    w.from = if moved || running { w.now() } else { target };
-                    w.to = target;
-                    w.at = now;
-                    w.serial += 1;
-                }
-                _ => {}
+                Some(w) => w.head(target, now),
             }
         }
     }
 
     /// Whether anything in the row is on its way somewhere.
     pub fn moving(&self) -> bool {
-        self.widths.values().any(|w| !w.done()) || self.plate.at.is_some_and(|at| at.elapsed() < TAB_ANIM + Duration::from_millis(80)) || self.born.values().any(|at| at.elapsed() < TAB_ANIM) || self.shift.values().chain(self.pill_shift.values()).any(|s| !s.done())
+        self.widths.values().chain(&self.lead).chain(&self.glide).any(|w| !w.done()) || self.plate.at.is_some_and(|at| at.elapsed() < TAB_ANIM + Duration::from_millis(80)) || self.born.values().any(|at| at.elapsed() < TAB_ANIM) || self.shift.values().chain(self.pill_shift.values()).any(|s| !s.done())
     }
 
     /// A tab's settled width.
@@ -350,10 +377,9 @@ impl Tabs {
     /// its left edge and its width, in the window's coordinates.
     fn pill_spans(&self, row: Bounds<Pixels>) -> Vec<(f32, f32)> {
         let widths: Vec<f32> = self.groups.iter().map(|(_, keys)| pill_chrome(keys.len()) + keys.iter().map(|k| self.width_of(k)).sum::<f32>()).collect();
-        let total = widths.iter().sum::<f32>() + PILL_GAP * (widths.len() as f32 - 1.).max(0.);
-        // Centered while they fit, else from the row's left, moved by how
-        // far the row is scrolled.
-        let mut x = f32::from(row.left()) + ((f32::from(row.size.width) - total) / 2.).max(0.) + f32::from(self.scroll.offset().x);
+        // From the row's left, as far in as they settle, moved by how far
+        // the row is scrolled.
+        let mut x = f32::from(row.left()) + self.lead.map_or(0., |l| l.to) + f32::from(self.scroll.offset().x);
         widths
             .into_iter()
             .map(|w| {
@@ -477,18 +503,15 @@ impl Tabs {
         .detach();
     }
 
-    /// The row: the pills at their widths, in the middle while they fit,
-    /// from the left with the row scrolling once they do not.
+    /// The row: the pills at their widths, `lead` in from its left, in
+    /// the middle while they fit and from the left with the row scrolling
+    /// once they do not.
     pub fn render(&self, items: &[Item], shown: Option<&Path>, root: Option<&Path>, cx: &mut Context<Shell>) -> AnyElement {
         let theme = cx.theme().clone();
         let dark = theme.mode.is_dark();
         let track_bg = if dark { theme.tab_bar_segmented } else { theme.muted };
         let plate_bg = if dark { theme.secondary_active } else { theme.popover };
-        let row_w = self.row_w.clone();
-        let entity = cx.entity().downgrade();
-        let settled = Width { from: TAB_MIN, to: TAB_MIN, at: Instant::now(), serial: 0 };
-        let wide: f32 = self.groups.iter().map(|(_, keys)| pill_chrome(keys.len()) + keys.iter().map(|k| self.width_of(k)).sum::<f32>()).sum::<f32>() + PILL_GAP * (self.groups.len() as f32 - 1.).max(0.) + PLUS_ROOM;
-        let fits = wide <= self.row_w.get() + 0.5;
+        let settled = Width::at_rest(TAB_MIN, Instant::now());
         let hints = self.hints;
         let mut row = h_flex()
             .id("tabs")
@@ -496,7 +519,7 @@ impl Tabs {
             .min_w_0()
             .h_full()
             .mx(px(STRIP_GAP))
-            .when(fits, |d| d.justify_center())
+            .pl(px(self.lead.map_or(0., |l| l.now())))
             .items_center()
             .gap(px(PILL_GAP))
             .overflow_x_scroll()
@@ -512,22 +535,7 @@ impl Tabs {
                 if let Some(order) = this.tabs_row.drag_pill_to(&folder, e.event.position.x, e.bounds) {
                     this.reorder_tabs(&order, window, cx);
                 }
-            }))
-            // The row's width, for `sync` at the next draw.
-            .child(
-                canvas(
-                    move |bounds, _, cx| {
-                        let w = f32::from(bounds.size.width);
-                        if (row_w.get() - w).abs() > 0.5 {
-                            row_w.set(w);
-                            let _ = entity.update(cx, |_, cx| cx.notify());
-                        }
-                    },
-                    |_, _, _, _| (),
-                )
-                .absolute()
-                .size_full(),
-            );
+            }));
         let live = self.plate.at.is_some_and(|at| at.elapsed() < TAB_ANIM + Duration::from_millis(80));
         let mut ix: usize = 0;
         for (folder, keys) in &self.groups {
@@ -577,6 +585,13 @@ impl Tabs {
                 .text_color(theme.muted_foreground)
                 .hover(|s| s.text_color(theme.foreground))
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, _| this.press_taken = true))
+                .on_mouse_down(MouseButton::Right, cx.listener({
+                    let folder = folder.clone();
+                    move |this, ev: &MouseDownEvent, window, cx| {
+                        swallow_click(window, cx);
+                        this.show_pill_menu(folder.clone(), ev.position, cx);
+                    }
+                }))
                 .on_drag(DragPill(folder.clone()), move |_, _, _, cx| cx.new(|_| Ghost(ghost.clone())))
                 .managed_tooltip(move |window, cx| tip(name.clone(), window, cx))
                 .child(Icon::new(IconName::Folder).with_size(px(13.)));
@@ -620,6 +635,13 @@ impl Tabs {
                     .when(!active, |d| d.hover(move |s| s.bg(hover_bg)))
                     .when(dragged, |d| d.opacity(0.45))
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, _| this.press_taken = true))
+                    .on_mouse_down(MouseButton::Right, cx.listener({
+                        let key = key.clone();
+                        move |this, ev: &MouseDownEvent, window, cx| {
+                            swallow_click(window, cx);
+                            this.show_entry_menu(key.clone(), ev.position, cx);
+                        }
+                    }))
                     .on_drag(DragTab(key.clone()), move |_, _, _, cx| cx.new(|_| Ghost(ghost.clone())))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         swallow_click(window, cx);
@@ -656,9 +678,11 @@ impl Tabs {
                 let plate = (ix < 9).then_some(ix + 1).filter(|_| hints).map(|n| hint_plate(n, &theme));
                 ix += 1;
                 // The width is read off the clock the plate reads, so the
-                // two never part by a frame.
+                // two never part by a frame; the animation is only there
+                // for that reading, and its id does not change with a
+                // width, or a press on a moving tab would lose its click.
                 let slot = div().relative().h(px(TAB_H)).flex_shrink_0().child(tab).children(plate);
-                pill = pill.child(slot.with_animation(ElementId::Name(format!("tab-w-{}-{}", key.display(), width.serial).into()), Animation::new(TAB_ANIM).with_easing(ease_out_quint()), move |d, t| {
+                pill = pill.child(slot.with_animation(ElementId::Name(format!("tab-w-{}", key.display()).into()), Animation::new(TAB_ANIM).with_easing(ease_out_quint()), move |d, t| {
                     let d = d.w(px(width.now())).left(px(shift.map(|s| s.now()).unwrap_or(0.)));
                     if fresh {
                         d.opacity(t)
@@ -742,7 +766,23 @@ fn hint_plate(n: usize, theme: &gpui_component::Theme) -> Div {
 #[cfg(test)]
 mod tests {
     // Named, not `super::*`: gpui's glob carries a `test` macro of its own.
-    use super::{Tabs, TAB_MIN};
+    use super::{Tabs, Width, TAB_ANIM, TAB_MIN};
+    use std::time::Instant;
+
+    /// A new target starts from where the length stands, not from where
+    /// it was going, and the same target asked again does not start over.
+    #[test]
+    fn a_length_heads_off_from_where_it_stands() {
+        let now = Instant::now();
+        let mut w = Width { from: 100., to: 200., at: now.checked_sub(TAB_ANIM / 4).unwrap() };
+        let stood = w.now();
+        assert!(stood > 100. && stood < 200.);
+        w.head(50., now);
+        assert!((w.from - stood).abs() < 5. && w.to == 50. && w.at == now);
+        let later = now + TAB_ANIM;
+        w.head(50.2, later);
+        assert!(w.to == 50. && w.at == now);
+    }
 
     /// The widest tabs give way first, the narrow keep their width, and
     /// none goes under `TAB_MIN`.

@@ -29,6 +29,8 @@ pub struct Textarea {
     context_menu_builder: Option<Rc<dyn Fn(NativeMenu, &mut Window, &mut App) -> NativeMenu>>,
     /// (Studio addition.)
     secondary_click: Option<Rc<dyn Fn(gpui::Point<gpui::Pixels>, &mut Window, &mut App)>>,
+    /// (Studio addition.)
+    flush: bool,
 }
 
 impl Textarea {
@@ -46,6 +48,7 @@ impl Textarea {
             aria_label: None,
             context_menu_builder: None,
             secondary_click: None,
+            flush: false,
         }
     }
 
@@ -108,6 +111,12 @@ impl Textarea {
 }
 
 impl Textarea {
+    /// As `Input::flush`. (Studio addition.)
+    pub fn flush(mut self, flush: bool) -> Self {
+        self.flush = flush;
+        self
+    }
+
     /// As `Input::on_secondary_click`. (Studio addition.)
     pub fn on_secondary_click(
         mut self,
@@ -129,6 +138,7 @@ impl RenderOnce for Textarea {
         Input::from_state(self.state.clone())
             .appearance(self.appearance)
             .bordered(self.bordered)
+            .flush(self.flush)
             .disabled(self.disabled)
             .readonly(self.readonly)
             .tab_index(self.tab_index)

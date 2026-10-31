@@ -27,7 +27,7 @@ use gpui_component::Root;
 
 use i18n::t;
 use onyx_core::config::Config;
-use shell::{CloseTab, CloseVault, Escape, FindInNote, FindNext, FindPrev, NewFolder, NewNote, NewVault, ReopenTab, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6, Tab7, Tab8, Tab9, OpenSettings, OpenVault, Save, Shell, ShowLive, ShowNormal, ShowReading, ShowSource, ShowWide, ToggleReading, ToggleSearch, ToggleSidebar, KEY_CONTEXT, MIN_W};
+use shell::{CloseTab, CloseVault, Escape, FindInNote, FindNext, FindPrev, NewFolder, NewNote, NewVault, ReopenTab, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6, Tab7, Tab8, Tab9, OpenSettings, OpenVault, Save, Shell, ShowLive, ShowNarrow, ShowMiddle, ShowReading, ShowSource, ShowWide, ToggleReading, ToggleSearch, ToggleSidebar, KEY_CONTEXT, MIN_W};
 
 actions!(onyx_app, [Quit, CloseWindow, Hide, HideOthers, ShowAll, Minimize, Zoom, ToggleFullScreen]);
 
@@ -48,6 +48,7 @@ fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("secondary-shift-g", FindPrev, None),
         KeyBinding::new("escape", Escape, Some(shell::SEARCH_CONTEXT)),
         KeyBinding::new("escape", Escape, Some(shell::FIND_CONTEXT)),
+        KeyBinding::new("escape", Escape, Some(shell::TITLE_CONTEXT)),
         KeyBinding::new("escape", Escape, Some(KEY_CONTEXT)),
         KeyBinding::new("escape", Escape, Some(settings::SETTINGS_CONTEXT)),
         KeyBinding::new("escape", Escape, Some(editor::EDITOR_CONTEXT)),
@@ -65,9 +66,14 @@ fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("secondary-7", Tab7, None),
         KeyBinding::new("secondary-8", Tab8, None),
         KeyBinding::new("secondary-9", Tab9, None),
-        KeyBinding::new("alt-1", ShowLive, None),
-        KeyBinding::new("alt-2", ShowSource, None),
-        KeyBinding::new("alt-3", ShowReading, None),
+        // ⌃ with a digit shows a way of reading on a Mac. Elsewhere ctrl
+        // is `secondary`, which picks a tab, so the modes add alt.
+        KeyBinding::new(if cfg!(target_os = "macos") { "ctrl-1" } else { "ctrl-alt-1" }, ShowLive, None),
+        KeyBinding::new(if cfg!(target_os = "macos") { "ctrl-2" } else { "ctrl-alt-2" }, ShowSource, None),
+        KeyBinding::new(if cfg!(target_os = "macos") { "ctrl-3" } else { "ctrl-alt-3" }, ShowReading, None),
+        KeyBinding::new("alt-1", ShowNarrow, None),
+        KeyBinding::new("alt-2", ShowMiddle, None),
+        KeyBinding::new("alt-3", ShowWide, None),
         KeyBinding::new("secondary-q", Quit, None),
     ];
     keys.extend(editor::key_bindings());
@@ -132,7 +138,7 @@ pub(crate) fn app_menus() -> Vec<Menu> {
     menus.push(Menu {
         name: t("View").into(),
         disabled: false,
-        items: vec![MenuItem::action(t("Edit"), ShowLive), MenuItem::action(t("Source"), ShowSource), MenuItem::action(t("Read"), ShowReading), MenuItem::separator(), MenuItem::action(t("Normal Width"), ShowNormal), MenuItem::action(t("Wide"), ShowWide), MenuItem::separator(), MenuItem::action(t("Search…"), ToggleSearch), MenuItem::separator(), MenuItem::action(t("Toggle Sidebar"), ToggleSidebar)],
+        items: vec![MenuItem::action(t("Edit"), ShowLive), MenuItem::action(t("Source"), ShowSource), MenuItem::action(t("Read"), ShowReading), MenuItem::separator(), MenuItem::action(t("Narrow"), ShowNarrow), MenuItem::action(t("Middle"), ShowMiddle), MenuItem::action(t("Wide"), ShowWide), MenuItem::separator(), MenuItem::action(t("Search…"), ToggleSearch), MenuItem::separator(), MenuItem::action(t("Toggle Sidebar"), ToggleSidebar)],
     });
     menus.push(Menu { name: t("Window").into(), disabled: false, items: vec![MenuItem::action(t("Minimize"), Minimize), MenuItem::action(t("Zoom"), Zoom), MenuItem::action(t("Toggle Full Screen"), ToggleFullScreen)] });
     menus

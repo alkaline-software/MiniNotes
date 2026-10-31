@@ -1,8 +1,10 @@
 //! A menu of the app's own: at a right click, or dropped down from a
 //! pill. A small card at the pointer, kept inside the window, over a
 //! clear sheet any click or Escape puts away. Each choice has an icon
-//! before its words, choices of one kind stand together with a line
-//! between the groups, and the card is as wide as its longest choice.
+//! before its words, from what it does, so the words stand in one column;
+//! choices of one kind stand together with a line between the groups; and
+//! the card is as wide as its longest choice and no wider. `docs/design.md`
+//! has the order the groups go in.
 //!
 //! It comes in over `MENU_IN`, rising a few pixels into place as it fades
 //! in, and goes out over `MENU_OUT`, fading where it was: what was closed
@@ -17,6 +19,7 @@ use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{h_flex, v_flex, ActiveTheme as _, Icon, Sizable as _};
 
+use crate::i18n::t;
 use crate::widgets::{float_shadow, swallow_click, MENU_IN, MENU_OUT};
 
 /// One line of a menu.
@@ -33,6 +36,42 @@ pub enum Entry {
 impl Entry {
     pub fn choice(id: impl Into<SharedString>, icon: &'static str, label: impl Into<SharedString>) -> Self {
         Entry::Choice { id: id.into(), icon, label: label.into(), picture: false, chosen: false }
+    }
+}
+
+/// A text's menu, in a note or a field: Cut and Copy with a selection,
+/// and Paste with something to paste, over Select All. `Cut` and `Paste`
+/// are left out by a text that takes no change.
+pub fn edit_entries(selection: bool, clipboard: bool, locked: bool) -> Vec<Entry> {
+    let mut items = Vec::new();
+    if selection && !locked {
+        items.push(Entry::choice("cut", "icons/scissors.svg", t("Cut")));
+    }
+    if selection {
+        items.push(Entry::choice("copy", "icons/copy.svg", t("Copy")));
+    }
+    if clipboard && !locked {
+        items.push(Entry::choice("paste", "icons/clipboard.svg", t("Paste")));
+    }
+    if !items.is_empty() {
+        items.push(Entry::Rule);
+    }
+    items.push(Entry::choice("select-all", "icons/select-all.svg", t("Select All")));
+    items
+}
+
+/// A choice from `edit_entries`, sent to the text it was opened on, which
+/// takes the keyboard for it: what was selected has to show, and a paste
+/// is typed on from.
+pub fn do_edit(id: &str, focus: &FocusHandle, window: &mut Window, cx: &mut App) {
+    use gpui_component::input::{Copy, Cut, Paste, SelectAll};
+    window.focus(focus, cx);
+    match id {
+        "cut" => focus.dispatch_action(&Cut, window, cx),
+        "copy" => focus.dispatch_action(&Copy, window, cx),
+        "paste" => focus.dispatch_action(&Paste, window, cx),
+        "select-all" => focus.dispatch_action(&SelectAll, window, cx),
+        _ => {}
     }
 }
 
@@ -86,25 +125,34 @@ impl Menus {
 #[allow(clippy::type_complexity)]
 fn card<V: 'static>(m: &Menu, going: Option<Duration>, pick: std::rc::Rc<dyn Fn(&mut V, &'static str, SharedString, &mut Window, &mut Context<V>)>, close: std::rc::Rc<dyn Fn(&mut V, &mut Context<V>)>, cx: &mut Context<V>) -> AnyElement {
     let theme = cx.theme().clone();
+    let dark = theme.mode.is_dark();
     let what = m.what;
     let rows = m.entries.iter().map(|e| match e.clone() {
-        Entry::Rule => div().h(px(1.)).mx(px(8.)).my(px(4.)).bg(theme.border).into_any_element(),
+        // The dark palette's border is a shade off the card and cannot be
+        // seen on it: a line of the ink, as a hover is.
+        Entry::Rule => div().h(px(9.)).flex().items_center().child(div().h(px(1.)).w_full().mx(px(6.)).bg(if theme.mode.is_dark() { theme.foreground.opacity(0.14) } else { theme.border })).into_any_element(),
         Entry::Choice { id, icon, label, picture, chosen } => {
             let pick = pick.clone();
             let id2 = id.clone();
             h_flex()
                 .id(ElementId::Name(format!("menu-{what}-{id}").into()))
-                .h(px(28.))
-                .px(px(10.))
+                .h(px(30.))
+                // An icon's drawing stops short of its box by about two
+                // points a side, so the row is that much tighter at the
+                // left: set the same both sides, the icon stood further
+                // in than the words' end did.
+                .pl(px(8.))
+                .pr(px(10.))
                 .gap(px(9.))
                 .items_center()
                 .rounded(px(6.))
                 .text_size(px(13.))
+                .whitespace_nowrap()
                 .text_color(theme.popover_foreground)
                 .cursor_pointer()
                 // In the dark appearance the palette's hover is a shade off
                 // the card and cannot be seen: a wash of the ink is.
-                .hover(|s| s.bg(theme.foreground.opacity(0.07)))
+                .hover(|s| s.bg(if dark { theme.foreground.opacity(0.11) } else { theme.sidebar_accent }))
                 .map(|d| if picture { d.child(img(icon).w(px(17.)).h(px(12.)).flex_shrink_0()) } else { d.child(Icon::default().path(icon).with_size(px(15.)).text_color(theme.muted_foreground)) })
                 .child(div().flex_1().child(label))
                 .when(chosen, |d| d.child(Icon::default().path("icons/check.svg").with_size(px(14.)).text_color(theme.primary)))
@@ -118,7 +166,6 @@ fn card<V: 'static>(m: &Menu, going: Option<Duration>, pick: std::rc::Rc<dyn Fn(
         }
     });
     let body = v_flex()
-        .min_w(px(160.))
         .p(px(5.))
         .rounded(px(10.))
         .border_1()

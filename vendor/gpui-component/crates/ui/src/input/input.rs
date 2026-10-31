@@ -134,6 +134,8 @@ pub struct Input {
     /// What a right click does in place of any native menu. (Studio
     /// addition.)
     secondary_click: Option<Rc<dyn Fn(gpui::Point<gpui::Pixels>, &mut Window, &mut App)>>,
+    /// No room round the text of a multi-line field. (Studio addition.)
+    flush: bool,
 }
 
 impl Sizable for Input {
@@ -202,6 +204,7 @@ impl Input {
             aria_label: None,
             context_menu_builder: None,
             secondary_click: None,
+            flush: false,
         }
     }
 
@@ -310,6 +313,13 @@ impl Input {
     /// A right click, at this point of the window, is the application's:
     /// no native menu is shown, so the application can draw its own. The
     /// cursor has already gone to the click unless it fell in the
+    /// No room round the text of a multi-line field, for a field set in
+    /// the text around it. (Studio addition.)
+    pub fn flush(mut self, flush: bool) -> Self {
+        self.flush = flush;
+        self
+    }
+
     /// selection. (Studio addition.)
     pub fn on_secondary_click(
         mut self,
@@ -427,7 +437,7 @@ impl RenderOnce for Input {
             cx,
         );
         state.set_editor_paddings(
-            if state.presentation(cx).is_multi_line() {
+            if state.presentation(cx).is_multi_line() && !self.flush {
                 Edges {
                     top: self.size.input_py(),
                     right: self.size.input_px(),

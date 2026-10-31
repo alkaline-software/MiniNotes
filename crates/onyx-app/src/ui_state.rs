@@ -30,20 +30,25 @@ pub struct Rect {
 pub struct UiState {
     pub window: Option<Rect>,
     pub sidebar_open: Option<bool>,
+    /// How wide the sidebar was dragged.
+    pub sidebar_w: Option<f32>,
     /// The settings' section last shown, where they open again.
     pub settings_section: Option<String>,
     /// The vault open, the notes open in it as tabs, and the one showing.
     pub vault: Option<PathBuf>,
     pub tabs: Vec<PathBuf>,
     pub note: Option<PathBuf>,
-    /// How the note was shown: `live`, `source` or `reading`.
+    /// How notes are shown: `live`, `source` or `reading`. The app's own,
+    /// not a note's; only the person changes it.
     pub mode: Option<String>,
     /// The vaults opened before, the latest first, for the landing page.
     pub recent_vaults: Vec<PathBuf>,
     /// The folders folded shut in the sidebar's tree, by their path.
     pub folded: Vec<PathBuf>,
-    /// The notes shown wide, to the page's edges.
-    pub wide: Vec<PathBuf>,
+    /// How wide notes run: `narrow`, `middle` or `wide`, the app's own as
+    /// `mode` is. Not `wide`, which earlier builds kept as a list of
+    /// notes: a file with that list has to go on reading.
+    pub page_width: Option<String>,
 }
 
 fn file() -> std::path::PathBuf {
@@ -132,5 +137,25 @@ impl UiState {
         self.recent_vaults.insert(0, vault.to_path_buf());
         self.recent_vaults.truncate(RECENT);
         self.vault = Some(vault.to_path_buf());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::UiState;
+
+    #[test]
+    fn a_first_launch_chooses_nothing() {
+        assert_eq!(UiState::default().page_width, None);
+        assert_eq!(UiState::default().mode, None);
+    }
+
+    #[test]
+    fn a_file_from_when_wide_was_each_note_s_still_reads() {
+        let old = r#"{"tabs":["/v/a.md"],"note":"/v/a.md","mode":"reading","wide":["/v/a.md"]}"#;
+        let ui: UiState = serde_json::from_str(old).expect("the file reads");
+        assert_eq!(ui.tabs.len(), 1);
+        assert_eq!(ui.mode.as_deref(), Some("reading"));
+        assert_eq!(ui.page_width, None);
     }
 }

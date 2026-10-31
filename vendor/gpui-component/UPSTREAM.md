@@ -341,6 +341,8 @@ upstream revision finds them.
 
 63. `crates/ui/src/text/style.rs` (`TextViewStyle::lang_marks`), `node.rs` (`chunk_icon`, `chunk_label`, `CodeBlock::render`): with `lang_marks` a plain fenced block with a language (```` ```python ````) has the head a chunk has, its language's mark and name at the top right, and no fold or chevron; a chunk keeps its fold. For Onyx, whose editor shows the mark on every block, so a note reads as it is edited.
 
+64. `crates/ui/src/input/input.rs`, `textarea.rs`: `flush(bool)` on `Input` and `Textarea` takes away the room upstream keeps round a multi-line field's text, whatever its size, so a field can stand in line with the text around it.
+
 ## Updating
 
 Check out the new upstream revision, copy the four crates over these, re-apply

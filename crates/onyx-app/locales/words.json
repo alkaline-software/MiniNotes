@@ -125,6 +125,15 @@
     "de": "Schließen (Esc)",
     "es": "Cerrar (Esc)"
   },
+  "Close Other Tabs": {
+    "zh-Hans": "关闭其他标签页",
+    "zh-Hant": "關閉其他標籤頁",
+    "ja": "ほかのタブを閉じる",
+    "ko": "다른 탭 닫기",
+    "fr": "Fermer les autres onglets",
+    "de": "Andere Tabs schließen",
+    "es": "Cerrar las demás pestañas"
+  },
   "Close Tab": {
     "zh-Hans": "关闭标签页",
     "zh-Hant": "關閉標籤頁",
@@ -142,6 +151,15 @@
     "fr": "Fermer l'onglet (⌘W)",
     "de": "Tab schließen (⌘W)",
     "es": "Cerrar pestaña (⌘W)"
+  },
+  "Close Tabs": {
+    "zh-Hans": "关闭标签页",
+    "zh-Hant": "關閉分頁",
+    "ja": "タブを閉じる",
+    "ko": "탭 닫기",
+    "fr": "Fermer les onglets",
+    "de": "Tabs schließen",
+    "es": "Cerrar pestañas"
   },
   "Close Vault": {
     "zh-Hans": "关闭仓库",
@@ -170,6 +188,15 @@
     "de": "Code",
     "es": "Código"
   },
+  "Collapse All Folders": {
+    "zh-Hans": "折叠所有文件夹",
+    "zh-Hant": "收合所有資料夾",
+    "ja": "すべてのフォルダを折りたたむ",
+    "ko": "모든 폴더 접기",
+    "fr": "Réduire tous les dossiers",
+    "de": "Alle Ordner einklappen",
+    "es": "Contraer todas las carpetas"
+  },
   "Copy": {
     "zh-Hans": "拷贝",
     "zh-Hant": "拷貝",
@@ -179,6 +206,24 @@
     "de": "Kopieren",
     "es": "Copiar"
   },
+  "Copy Link": {
+    "zh-Hans": "拷贝链接",
+    "zh-Hant": "拷貝連結",
+    "ja": "リンクをコピー",
+    "ko": "링크 복사",
+    "fr": "Copier le lien",
+    "de": "Link kopieren",
+    "es": "Copiar enlace"
+  },
+  "Copy Markdown": {
+    "zh-Hans": "拷贝 Markdown",
+    "zh-Hant": "拷貝 Markdown",
+    "ja": "Markdown をコピー",
+    "ko": "Markdown 복사",
+    "fr": "Copier le Markdown",
+    "de": "Markdown kopieren",
+    "es": "Copiar Markdown"
+  },
   "Copy Path": {
     "zh-Hans": "拷贝路径",
     "zh-Hant": "拷貝路徑",
@@ -187,6 +232,24 @@
     "fr": "Copier le chemin",
     "de": "Pfad kopieren",
     "es": "Copiar la ruta"
+  },
+  "Copy Relative Path": {
+    "zh-Hans": "拷贝相对路径",
+    "zh-Hant": "拷貝相對路徑",
+    "ja": "相対パスをコピー",
+    "ko": "상대 경로 복사",
+    "fr": "Copier le chemin relatif",
+    "de": "Relativen Pfad kopieren",
+    "es": "Copiar ruta relativa"
+  },
+  "Copy Text": {
+    "zh-Hans": "拷贝文字",
+    "zh-Hant": "拷貝文字",
+    "ja": "テキストをコピー",
+    "ko": "텍스트 복사",
+    "fr": "Copier le texte",
+    "de": "Text kopieren",
+    "es": "Copiar texto"
   },
   "Create": {
     "zh-Hans": "创建",
@@ -242,14 +305,14 @@
     "de": "Bearbeiten",
     "es": "Edición"
   },
-  "Edit (⌥1)": {
-    "zh-Hans": "编辑 (⌥1)",
-    "zh-Hant": "編輯 (⌥1)",
-    "ja": "編集 (⌥1)",
-    "ko": "편집 (⌥1)",
-    "fr": "Édition (⌥1)",
-    "de": "Bearbeiten (⌥1)",
-    "es": "Edición (⌥1)"
+  "Edit (⌃1)": {
+    "zh-Hans": "编辑 (⌃1)",
+    "zh-Hant": "編輯 (⌃1)",
+    "ja": "編集 (⌃1)",
+    "ko": "편집 (⌃1)",
+    "fr": "Édition (⌃1)",
+    "de": "Bearbeiten (⌃1)",
+    "es": "Edición (⌃1)"
   },
   "File": {
     "zh-Hans": "文件",
@@ -440,6 +503,24 @@
     "de": "Mittel",
     "es": "Mediano"
   },
+  "Middle": {
+    "zh-Hans": "中",
+    "zh-Hant": "中",
+    "ja": "ミドル",
+    "ko": "중간",
+    "fr": "Moyen",
+    "de": "Mittel",
+    "es": "Medio"
+  },
+  "Middle (⌥2)": {
+    "zh-Hans": "中 (⌥2)",
+    "zh-Hant": "中 (⌥2)",
+    "ja": "ミドル (⌥2)",
+    "ko": "중간 (⌥2)",
+    "fr": "Moyen (⌥2)",
+    "de": "Mittel (⌥2)",
+    "es": "Medio (⌥2)"
+  },
   "Minimize": {
     "zh-Hans": "最小化",
     "zh-Hant": "縮到最小",
@@ -475,6 +556,24 @@
     "fr": "Placer dans la corbeille",
     "de": "In den Papierkorb legen",
     "es": "Mover a la papelera"
+  },
+  "Narrow": {
+    "zh-Hans": "窄",
+    "zh-Hant": "窄",
+    "ja": "ナロー",
+    "ko": "좁게",
+    "fr": "Étroit",
+    "de": "Schmal",
+    "es": "Estrecho"
+  },
+  "Narrow (⌥1)": {
+    "zh-Hans": "窄 (⌥1)",
+    "zh-Hant": "窄 (⌥1)",
+    "ja": "ナロー (⌥1)",
+    "ko": "좁게 (⌥1)",
+    "fr": "Étroit (⌥1)",
+    "de": "Schmal (⌥1)",
+    "es": "Estrecho (⌥1)"
   },
   "New Folder": {
     "zh-Hans": "新建文件夹",
@@ -566,24 +665,6 @@
     "de": "Kein Tresor",
     "es": "Sin bóveda"
   },
-  "Normal Width": {
-    "zh-Hans": "标准宽度",
-    "zh-Hant": "標準寬度",
-    "ja": "標準幅",
-    "ko": "일반 너비",
-    "fr": "Largeur normale",
-    "de": "Normale Breite",
-    "es": "Ancho normal"
-  },
-  "Normal width": {
-    "zh-Hans": "标准宽度",
-    "zh-Hant": "標準寬度",
-    "ja": "標準幅",
-    "ko": "일반 너비",
-    "fr": "Largeur normale",
-    "de": "Normale Breite",
-    "es": "Ancho normal"
-  },
   "Note font": {
     "zh-Hans": "笔记字体",
     "zh-Hant": "筆記字體",
@@ -638,6 +719,24 @@
     "de": "Öffnen",
     "es": "Abrir"
   },
+  "Open Link": {
+    "zh-Hans": "打开链接",
+    "zh-Hant": "開啟連結",
+    "ja": "リンクを開く",
+    "ko": "링크 열기",
+    "fr": "Ouvrir le lien",
+    "de": "Link öffnen",
+    "es": "Abrir enlace"
+  },
+  "Open Note": {
+    "zh-Hans": "打开笔记",
+    "zh-Hant": "開啟筆記",
+    "ja": "ノートを開く",
+    "ko": "노트 열기",
+    "fr": "Ouvrir la note",
+    "de": "Notiz öffnen",
+    "es": "Abrir nota"
+  },
   "Open Vault…": {
     "zh-Hans": "打开仓库…",
     "zh-Hant": "打開儲存庫…",
@@ -646,6 +745,33 @@
     "fr": "Ouvrir un coffre…",
     "de": "Tresor öffnen…",
     "es": "Abrir una bóveda…"
+  },
+  "Open folder": {
+    "zh-Hans": "打开文件夹",
+    "zh-Hant": "打開資料夾",
+    "ja": "フォルダを開く",
+    "ko": "폴더 열기",
+    "fr": "Ouvrir le dossier",
+    "de": "Ordner öffnen",
+    "es": "Abrir carpeta"
+  },
+  "Open in Explorer": {
+    "zh-Hans": "在资源管理器中打开",
+    "zh-Hant": "在檔案總管中打開",
+    "ja": "エクスプローラーで開く",
+    "ko": "탐색기에서 열기",
+    "fr": "Ouvrir dans l’Explorateur",
+    "de": "Im Explorer öffnen",
+    "es": "Abrir en el Explorador"
+  },
+  "Open in Finder": {
+    "zh-Hans": "在访达中打开",
+    "zh-Hant": "在 Finder 中打開",
+    "ja": "Finder で開く",
+    "ko": "Finder에서 열기",
+    "fr": "Ouvrir dans le Finder",
+    "de": "Im Finder öffnen",
+    "es": "Abrir en el Finder"
   },
   "Orchid": {
     "zh-Hans": "兰花紫",
@@ -701,14 +827,14 @@
     "de": "Lesen",
     "es": "Leer"
   },
-  "Read (⌥3)": {
-    "zh-Hans": "阅读 (⌥3)",
-    "zh-Hant": "閱讀 (⌥3)",
-    "ja": "閲覧 (⌥3)",
-    "ko": "읽기 (⌥3)",
-    "fr": "Lire (⌥3)",
-    "de": "Lesen (⌥3)",
-    "es": "Leer (⌥3)"
+  "Read (⌃3)": {
+    "zh-Hans": "阅读 (⌃3)",
+    "zh-Hant": "閱讀 (⌃3)",
+    "ja": "閲覧 (⌃3)",
+    "ko": "읽기 (⌃3)",
+    "fr": "Lire (⌃3)",
+    "de": "Lesen (⌃3)",
+    "es": "Leer (⌃3)"
   },
   "Recent": {
     "zh-Hans": "最近",
@@ -772,15 +898,6 @@
     "fr": "Renommer la note",
     "de": "Notiz umbenennen",
     "es": "Renombrar la nota"
-  },
-  "Rename…": {
-    "zh-Hans": "重命名…",
-    "zh-Hant": "重新命名…",
-    "ja": "名称変更…",
-    "ko": "이름 변경…",
-    "fr": "Renommer…",
-    "de": "Umbenennen …",
-    "es": "Renombrar…"
   },
   "Reopen Closed Tab": {
     "zh-Hans": "重新打开关闭的标签页",
@@ -971,14 +1088,14 @@
     "de": "Quelltext",
     "es": "Código fuente"
   },
-  "Source (⌥2)": {
-    "zh-Hans": "源代码 (⌥2)",
-    "zh-Hant": "原始碼 (⌥2)",
-    "ja": "ソース (⌥2)",
-    "ko": "소스 (⌥2)",
-    "fr": "Source (⌥2)",
-    "de": "Quelltext (⌥2)",
-    "es": "Código fuente (⌥2)"
+  "Source (⌃2)": {
+    "zh-Hans": "源代码 (⌃2)",
+    "zh-Hant": "原始碼 (⌃2)",
+    "ja": "ソース (⌃2)",
+    "ko": "소스 (⌃2)",
+    "fr": "Source (⌃2)",
+    "de": "Quelltext (⌃2)",
+    "es": "Código fuente (⌃2)"
   },
   "Still up": {
     "zh-Hans": "还没睡",
@@ -1213,6 +1330,15 @@
     "fr": "Large",
     "de": "Breit",
     "es": "Ancho"
+  },
+  "Wide (⌥3)": {
+    "zh-Hans": "宽 (⌥3)",
+    "zh-Hant": "寬 (⌥3)",
+    "ja": "ワイド (⌥3)",
+    "ko": "넓게 (⌥3)",
+    "fr": "Large (⌥3)",
+    "de": "Breit (⌥3)",
+    "es": "Ancho (⌥3)"
   },
   "Window": {
     "zh-Hans": "窗口",

@@ -271,6 +271,17 @@ pub fn float_shadow(theme: &gpui_component::Theme) -> Vec<BoxShadow> {
     ]
 }
 
+/// Text to the clipboard. A probe says it instead: the clipboard is the
+/// person's, and a copy under a script stays in its window.
+pub fn to_clipboard(text: impl Into<String>, cx: &mut App) {
+    let text = text.into();
+    if std::env::var_os("ONYX_GO").is_some() {
+        eprintln!("copy {text:?}");
+    } else {
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+    }
+}
+
 /// A click the window takes for itself. The toolkit's text selection
 /// begins a drag at every left press and ends it at the release; a
 /// handler that only stops the release leaves every later move extending
@@ -371,22 +382,23 @@ impl Motion {
     /// the width it is given among the choices.
     #[allow(clippy::type_complexity)]
     pub fn segmented<V: 'static>(&self, control: &'static str, options: Vec<(&'static str, &'static str, SharedString)>, current: &'static str, fill: bool, icons: bool, on: Rc<dyn Fn(&mut V, &'static str, &mut Window, &mut Context<V>)>, cx: &mut Context<V>) -> AnyElement {
-        self.segmented_in(control, options.into_iter().map(|(k, i, l)| (k, i, l, None)).collect(), current, fill, icons, on, cx)
+        self.segmented_in(control, options.into_iter().map(|(k, i, l)| (k, i, l, None)).collect(), current, fill, icons, 1., on, cx)
     }
 
     /// A segmented control of icons alone, each segment a square and each
     /// in a color of its own: the icon takes its color while it is the
     /// choice or under the pointer, in place of the plain ink.
-    pub fn segmented_tinted<V: 'static>(&self, control: &'static str, options: Vec<(&'static str, &'static str, SharedString, Hsla)>, current: &'static str, on: Rc<dyn Fn(&mut V, &'static str, &mut Window, &mut Context<V>)>, cx: &mut Context<V>) -> AnyElement {
-        self.segmented_in(control, options.into_iter().map(|(k, i, l, c)| (k, i, l, Some(c))).collect(), current, false, true, on, cx)
+    pub fn segmented_tinted<V: 'static>(&self, control: &'static str, options: Vec<(&'static str, &'static str, SharedString, Hsla)>, current: &'static str, lift: f32, on: Rc<dyn Fn(&mut V, &'static str, &mut Window, &mut Context<V>)>, cx: &mut Context<V>) -> AnyElement {
+        self.segmented_in(control, options.into_iter().map(|(k, i, l, c)| (k, i, l, Some(c))).collect(), current, false, true, lift, on, cx)
     }
 
-    fn segmented_in<V: 'static>(&self, control: &'static str, options: Vec<(&'static str, &'static str, SharedString, Option<Hsla>)>, current: &'static str, fill: bool, icons: bool, on: Rc<dyn Fn(&mut V, &'static str, &mut Window, &mut Context<V>)>, cx: &mut Context<V>) -> AnyElement {
-        // With `icons`, a segment is its icon alone, a square of 22 with
-        // no track under the row: the raised plate and the icon's color
-        // say which is chosen, and a track beside the card's edge was one
-        // layer too many. Its word is said on hover.
-        let (pad, seg_h, seg_px, seg_text, round) = (px(if icons { 0. } else { 3. }), px(22.), px(if icons { 0. } else { 11. }), px(12.5), px(6.));
+    fn segmented_in<V: 'static>(&self, control: &'static str, options: Vec<(&'static str, &'static str, SharedString, Option<Hsla>)>, current: &'static str, fill: bool, icons: bool, lift: f32, on: Rc<dyn Fn(&mut V, &'static str, &mut Window, &mut Context<V>)>, cx: &mut Context<V>) -> AnyElement {
+        // With `icons`, a segment is its icon alone, a square with no track
+        // under the row, as tall and as round as a tab's plate, which it
+        // stands beside: the raised plate and the icon's color say which
+        // is chosen, and a track beside the card's edge was one layer too
+        // many. Its word is said on hover.
+        let (pad, seg_h, seg_px, seg_text, round) = (px(if icons { 0. } else { 3. }), px(if icons { 24. } else { 22. }), px(if icons { 0. } else { 11. }), px(12.5), px(if icons { 7. } else { 6. }));
         let theme = cx.theme().clone();
         let dark = theme.mode.is_dark();
         let track_bg = if icons { theme.transparent } else if dark { theme.tab_bar_segmented } else { theme.muted };
@@ -414,7 +426,7 @@ impl Motion {
             (Some(a), Some(b)) => Some(div().absolute().rounded(round).bg(plate_bg).shadow_sm().with_animation(ElementId::Name(format!("{control}-plate-{to}").into()), Animation::new(SLIDE).with_easing(ease_out_quint()), move |d, t| {
                 let x = a.origin.x + (b.origin.x - a.origin.x) * t;
                 let w = a.size.width + (b.size.width - a.size.width) * t;
-                d.left(x).top(b.origin.y).w(w).h(b.size.height)
+                d.left(x).top(b.origin.y).w(w).h(b.size.height).opacity(lift)
             })),
             _ => None,
         };
@@ -458,7 +470,7 @@ impl Motion {
                     .cursor_pointer()
                     .text_size(seg_text)
                     .when(fill, |d| d.flex_1().justify_center())
-                    .when(active && !measured, |d| d.bg(plate_bg).shadow_sm())
+                    .when(active && !measured, |d| d.bg(plate_bg.opacity(lift)).when(lift >= 1., |d| d.shadow_sm()))
                     // A hover that changes the text's color is set in every
                     // state, never under a `when`: gpui hears the pointer
                     // leave only while a hover style is set, and a segment

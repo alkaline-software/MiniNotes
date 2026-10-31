@@ -214,7 +214,8 @@ impl Shell {
             this.menus.close(cx);
             cx.notify();
         });
-        let menu = if self.menus.open.as_ref().is_some_and(|m| m.what == "language") || self.menus.gone.as_ref().is_some_and(|(m, _)| m.what == "language") { self.menus.render(pick, close, cx) } else { None };
+        let ours = |m: &crate::menu::Menu| m.what == "language" || m.what == crate::shell::SETTINGS_EDIT;
+        let menu = if self.menus.open.as_ref().is_some_and(ours) || self.menus.gone.as_ref().is_some_and(|(m, _)| ours(m)) { self.menus.render(pick, close, cx) } else { None };
         div()
             .id("settings-window")
             .key_context(SETTINGS_CONTEXT)
@@ -360,7 +361,7 @@ impl Shell {
         // one, and their name in a field beside it.
         let name_field = self.name_input.as_ref().map(|input| {
             let focus = input.read(cx).focus_handle(cx);
-            div().id("name-field").track_focus(&focus).w(px(150.)).h(CONTROL_H).px(px(8.)).flex().items_center().rounded(px(6.)).bg(if dark { theme.muted } else { theme.background }).border_1().border_color(theme.input).text_size(px(12.5)).child(Input::new(input).appearance(false).bordered(false))
+            div().id("name-field").track_focus(&focus).w(px(150.)).h(CONTROL_H).px(px(8.)).flex().items_center().rounded(px(6.)).bg(if dark { theme.muted } else { theme.background }).border_1().border_color(theme.input).text_size(px(12.5)).child(Input::new(input).appearance(false).on_secondary_click(Self::input_menu(input, crate::shell::SETTINGS_EDIT, cx)).bordered(false))
         });
         let you = h_flex()
             .gap(px(8.))
@@ -441,7 +442,7 @@ impl Shell {
         let field = |ix: usize, cx: &mut Context<Self>| -> Option<AnyElement> {
             let input = self.font_inputs.as_ref()?[ix].clone();
             let focus = input.read(cx).focus_handle(cx);
-            let plate = div().id(("font-field", ix)).track_focus(&focus).w(px(220.)).h(CONTROL_H).px(px(8.)).flex().items_center().rounded(px(8.)).bg(theme.muted).text_size(px(13.)).child(Input::new(&input).appearance(false)).into_any_element();
+            let plate = div().id(("font-field", ix)).track_focus(&focus).w(px(220.)).h(CONTROL_H).px(px(8.)).flex().items_center().rounded(px(8.)).bg(theme.muted).text_size(px(13.)).child(Input::new(&input).appearance(false).on_secondary_click(Self::input_menu(&input, crate::shell::SETTINGS_EDIT, cx))).into_any_element();
             Some(line(t("Installed font").into(), Some(t("A font on this Mac, by its name in Font Book.").into()), plate, &theme))
         };
         let mut rows = Vec::new();
@@ -792,6 +793,13 @@ impl Shell {
     }
 
     fn settings_pick(&mut self, what: &'static str, id: SharedString, window: &mut Window, cx: &mut Context<Self>) {
+        if what == crate::shell::SETTINGS_EDIT {
+            self.menus.close(cx);
+            if let Some(focus) = self.menu_focus.take() {
+                crate::menu::do_edit(&id, &focus, window, cx);
+            }
+            return;
+        }
         if what == "language" {
             let code = id.to_string();
             self.cfg.app.language = code.clone();

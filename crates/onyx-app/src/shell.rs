@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use gpui_component::input::{Input, InputEvent, InputState};
+use gpui_component::input::{Input, InputEvent, InputState, Textarea, TextareaState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::tooltip::ManagedTooltipExt as _;
 use gpui_component::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
@@ -29,7 +29,7 @@ use onyx_core::config::Config;
 use onyx_core::{update, vault};
 
 use crate::ambient::Ambient;
-use crate::editor::{Editor, EditorEvent, Look, Mode};
+use crate::editor::{Editor, EditorEvent, Look, MenuLink, Mode};
 use crate::i18n::{t, tf};
 use crate::menu::{Entry, Menus};
 use crate::scroll::Scrollers;
@@ -37,7 +37,7 @@ use crate::tabs::{Item as TabItem, Tabs};
 use crate::ui_state::{Rect, UiState};
 use crate::widgets::{choice_pill, float_shadow, kbd_hint, key_text, page_in, small_pill, swallow_click, tip, Fig, Motion, Press, FOLD_ANIM, SLIDE};
 
-actions!(onyx, [ToggleSidebar, OpenSettings, Escape, NewNote, NewFolder, NewVault, OpenVault, CloseVault, Save, ShowLive, ShowSource, ShowReading, ToggleReading, ShowNormal, ShowWide, ToggleSearch, FindInNote, FindNext, FindPrev, CloseTab, ReopenTab, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6, Tab7, Tab8, Tab9]);
+actions!(onyx, [ToggleSidebar, OpenSettings, Escape, NewNote, NewFolder, NewVault, OpenVault, CloseVault, Save, ShowLive, ShowSource, ShowReading, ToggleReading, ShowNarrow, ShowMiddle, ShowWide, ToggleSearch, FindInNote, FindNext, FindPrev, CloseTab, ReopenTab, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6, Tab7, Tab8, Tab9]);
 
 /// The key context of the main window.
 pub const KEY_CONTEXT: &str = "Shell";
@@ -47,7 +47,18 @@ const SHEET_CONTEXT: &str = "Sheet";
 /// over the note.
 pub const SEARCH_CONTEXT: &str = "SearchPalette";
 pub const FIND_CONTEXT: &str = "FindBar";
+pub const TITLE_CONTEXT: &str = "NoteTitle";
+/// A text field's menu in the settings window.
+pub const SETTINGS_EDIT: &str = "settings-edit";
 
+/// How many lines a note's name wraps to before it scrolls in its field.
+const TITLE_ROWS: usize = 6;
+/// How tall a scroller's edge fade stands, and with it the zone that
+/// counts as out of sight: the editor's `SCROLL_MARGIN`, which keeps the
+/// caret out of it. The two change together.
+const FADE_H: Pixels = px(28.);
+/// How far from the end of a scroll its edge's fade is whole.
+const FADE_ROOM: f32 = 56.;
 /// The window's ground shows this far around the card.
 pub const FRAME: Pixels = px(4.);
 /// The card's corner: the window's less the frame's band, so the two
@@ -59,9 +70,18 @@ pub const TITLEBAR_H: Pixels = px(48.);
 /// The room the traffic lights take at the window's left.
 const TRAFFIC_W: Pixels = px(85.);
 const STRIP_BTN: Pixels = px(26.);
-/// The strip's padding at either end of the card's top.
-const STRIP_PAD: Pixels = px(7.5);
 pub const SIDEBAR_W: Pixels = px(268.);
+/// The sidebar is dragged between these, emaki's. The least still has
+/// room for the window's buttons and the name beside them.
+const SIDEBAR_MIN: Pixels = px(264.);
+const SIDEBAR_MAX: Pixels = px(440.);
+/// The most a double click on the edge asks for; a drag may go on to
+/// `SIDEBAR_MAX`.
+const SIDEBAR_FIT_MAX: Pixels = px(320.);
+/// Dragged left of this, the sidebar folds away.
+const SIDEBAR_FOLD_AT: Pixels = px(170.);
+/// How wide the strip at the sidebar's edge that takes the drag is.
+const SIDEBAR_GRIP: Pixels = px(8.);
 /// The rail: the sidebar folded to a column at the window's left, with
 /// the traffic lights stacked at its head on a Mac, then the sidebar's
 /// and the search's buttons, then its entries, each a square on one
@@ -75,14 +95,79 @@ const RAIL_TOP: Pixels = px(if cfg!(target_os = "macos") { 92. } else { 52. });
 const FLY_TOP: Pixels = px(52.);
 /// How many lines of a note the search shows under it.
 const SEARCH_LINES: usize = 3;
-/// Either end of the path bar: the modes' group, three squares of 22
-/// with 2 between them, is the wider.
-const BAR_END: Pixels = px(72.);
-/// A note's sheet is this wide, as a comfortable line of reading,
-/// unless the note is shown wide; the tinted page shows `SHEET_MARGIN`
-/// round the sheet, and the words stand `SHEET_GUTTER` in from its
-/// edge, Normal's and Wide's.
-const READABLE_W: Pixels = px(700.);
+/// An open group: its three squares of `STRIP_SQUARE`, 2 between them.
+const GROUP_W: Pixels = px(76.);
+/// The path's row under the tabs, and how far its path keeps from the
+/// card's sides.
+const PATH_BAR_H: Pixels = px(30.);
+const PATH_BAR_PAD: f32 = 6.;
+/// How far the tabs' row keeps its squares from the card's sides: what
+/// they keep from its top and foot, so the room round them is even.
+const STRIP_END: Pixels = px(10.);
+/// A script's presses and keys land this many milliseconds apart.
+const GO_STEP: u64 = 400;
+/// A group's square, a tab's plate tall.
+const STRIP_SQUARE: Pixels = px(24.);
+/// The line round a group and what it keeps from the squares inside, so
+/// the group is as tall as the tabs' pill beside it, and as round.
+const STRIP_INSET: Pixels = px(2.);
+const STRIP_CAP: Pixels = px(30.);
+const STRIP_CAP_R: Pixels = px(9.);
+/// Between each end of the tabs' row and the row.
+const STRIP_END_GAP: Pixels = px(6.);
+
+/// The ends of the tabs' row.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StripEnd {
+    Modes,
+    Widths,
+}
+
+/// How wide a note's sheet runs, for every note: the app's own, as the
+/// mode is, and only the person changes it.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum PageWidth {
+    #[default]
+    Narrow,
+    Middle,
+    Wide,
+}
+
+impl PageWidth {
+    fn key(self) -> &'static str {
+        match self {
+            PageWidth::Narrow => "narrow",
+            PageWidth::Middle => "middle",
+            PageWidth::Wide => "wide",
+        }
+    }
+
+    fn from_key(key: &str) -> PageWidth {
+        match key {
+            "middle" => PageWidth::Middle,
+            "wide" => PageWidth::Wide,
+            _ => PageWidth::Narrow,
+        }
+    }
+
+    /// Its place on the way from Narrow to Wide, which a change eases along.
+    fn level(self) -> f32 {
+        match self {
+            PageWidth::Narrow => 0.,
+            PageWidth::Middle => 1.,
+            PageWidth::Wide => 2.,
+        }
+    }
+}
+
+/// Narrow's sheet, a comfortable line of reading. Wide runs to the page's
+/// edges and Middle halfway there, as far as `MIDDLE_MOST`, past which a
+/// big monitor would stretch it toward Wide. A page no wider than Narrow
+/// has room for one width, and all three are it.
+const NARROW_W: f32 = 700.;
+const MIDDLE_MOST: f32 = 960.;
+/// The tinted page shows this much round the sheet, and the words stand
+/// `SHEET_GUTTER` in from its edge, Middle's and narrower, and Wide's.
 const SHEET_MARGIN: Pixels = px(16.);
 const SHEET_GUTTER: (f32, f32) = (32., 48.);
 /// The least the window is dragged to.
@@ -107,9 +192,13 @@ struct Vault {
 struct Tab {
     path: PathBuf,
     editor: Entity<Editor>,
+    /// The file's name, in the field over the words: the tab's own, like
+    /// its editor, so a name half typed stays with its note.
+    title: Entity<TextareaState>,
     dirty: bool,
     saved: String,
     _sub: Subscription,
+    _title_sub: Subscription,
 }
 
 /// Where a new vault goes: a folder named for it under iCloud Drive's
@@ -137,6 +226,12 @@ pub struct Shell {
     sidebar_open: bool,
     /// The sidebar's coming or going: which, and when it began.
     side_anim: Option<(bool, Instant)>,
+    /// How wide the sidebar is, the person's own and kept, and while a
+    /// double click on its edge moves it, the width it left and when.
+    sidebar_w: Pixels,
+    side_w_anim: Option<(Pixels, Instant)>,
+    /// The sidebar's edge is held.
+    side_drag: bool,
     side_scroll: ScrollHandle,
     page_scroll: ScrollHandle,
     vault: Option<Vault>,
@@ -157,13 +252,17 @@ pub struct Shell {
     /// What every editor is set in, and how every note is shown.
     pub(crate) look: Look,
     mode: Mode,
-    /// The notes shown wide, to the page's edges; the rest run a
-    /// comfortable line of reading. A change of width is a move: which
-    /// note, which way, and when it began. The page's width, as last
-    /// painted, is what Wide runs to.
-    wide: HashSet<PathBuf>,
-    wide_anim: Option<(PathBuf, bool, Instant)>,
-    page_w: Rc<Cell<f32>>,
+    /// The page's width, the card's, figured as each frame is built, so
+    /// the sheet is never a frame behind a window being resized.
+    /// When a script's last press has landed, for its picture.
+    go_ends: u64,
+    /// A group opened out of its square: which, when, whether it is
+    /// opening or closing, and how open it was when that began.
+    strip_fly: Option<(StripEnd, Instant, bool, f32)>,
+    width: PageWidth,
+    /// A change of width under way: the level it began from, and when.
+    width_anim: Option<(f32, Instant)>,
+    page_w: f32,
     /// The color the window's own ground was last set to, so it is set
     /// once and not at every frame.
     ground: Cell<Option<Hsla>>,
@@ -188,6 +287,9 @@ pub struct Shell {
     pub(crate) name_input: Option<Entity<InputState>>,
     /// The row a right click was on.
     pressed: Option<PathBuf>,
+    /// The text a menu was opened on, and the link, for what is chosen.
+    pub(crate) menu_focus: Option<FocusHandle>,
+    menu_link: Option<MenuLink>,
     /// A rename under way: the entry, and the field for its name.
     rename: Option<PathBuf>,
     rename_input: Entity<InputState>,
@@ -331,9 +433,11 @@ impl Shell {
         let mut shell = Self {
             look: Self::look_of(&cfg.editor),
             mode: Mode::from_key(ui.mode.as_deref().unwrap_or("live")),
-            wide: ui.wide.iter().cloned().collect(),
-            wide_anim: None,
-            page_w: Rc::new(Cell::new(0.)),
+            width: ui.page_width.as_deref().map(PageWidth::from_key).unwrap_or_default(),
+            width_anim: None,
+            strip_fly: None,
+            go_ends: 0,
+            page_w: 0.,
             cfg,
             motion: Motion::default(),
             scrollers: Scrollers::default(),
@@ -342,6 +446,9 @@ impl Shell {
             ambient: cx.new(|_| Ambient::default()),
             sidebar_open: ui.sidebar_open.unwrap_or(true),
             side_anim: None,
+            sidebar_w: ui.sidebar_w.map(px).unwrap_or(SIDEBAR_W).clamp(SIDEBAR_MIN, SIDEBAR_MAX),
+            side_w_anim: None,
+            side_drag: false,
             side_scroll: ScrollHandle::new(),
             page_scroll: ScrollHandle::new(),
             vault: None,
@@ -365,6 +472,8 @@ impl Shell {
             find_input,
             name_input: None,
             pressed: None,
+            menu_focus: None,
+            menu_link: None,
             rename: None,
             rename_input,
             new_vault: None,
@@ -420,8 +529,9 @@ impl Shell {
             ui.window = Some(Rect { x: f32::from(b.origin.x), y: f32::from(b.origin.y), w: f32::from(b.size.width), h: f32::from(b.size.height) });
         }
         ui.sidebar_open = Some(self.sidebar_open);
+        ui.sidebar_w = Some(f32::from(self.sidebar_w));
         ui.settings_section = Some(self.settings_section.to_string());
-        ui.wide = self.wide.iter().cloned().collect();
+        ui.page_width = Some(self.width.key().to_string());
         if std::env::var_os("ONYX_VAULT").is_none() {
             ui.vault = self.vault.as_ref().map(|v| v.root.clone());
             ui.note = self.shown.clone();
@@ -706,13 +816,72 @@ impl Shell {
             e.set_mode(mode, cx);
             e.set_text(text, cx);
         });
-        let path = path.to_path_buf();
-        let sub = cx.subscribe(&editor, move |this, _, ev: &EditorEvent, cx| match ev {
+        let sub = Self::listen(&editor, path.to_path_buf(), cx);
+        (editor, sub)
+    }
+
+    /// What a tab's editor says, heard by the note's path.
+    fn listen(editor: &Entity<Editor>, path: PathBuf, cx: &mut Context<Self>) -> Subscription {
+        cx.subscribe(editor, move |this, editor, ev: &EditorEvent, cx| match ev {
             EditorEvent::Changed => this.note_changed(&path, cx),
             EditorEvent::OpenLink(url) => this.open_link(url, cx),
             EditorEvent::OpenNote(name) => this.open_wikilink(name, cx),
+            EditorEvent::Menu(at, link) => this.canvas_menu(editor, *at, link.clone(), cx),
+        })
+    }
+
+    /// A note's name as a field: it wraps as the name did and is kept
+    /// when ↩ is pressed or the keyboard leaves. Focus events come after
+    /// the frame that moved the keyboard, so the field is found by what
+    /// it is, never by the note showing, which may be another by then.
+    fn make_title(&self, path: &Path, window: &mut Window, cx: &mut Context<Self>) -> (Entity<TextareaState>, Subscription) {
+        let name = vault::title(path);
+        let title = cx.new(|cx| {
+            let mut field = TextareaState::new(window, cx).auto_grow(1, TITLE_ROWS).soft_wrap(true).submit_on_enter(true).placeholder(t("Untitled").to_string());
+            field.set_value(name, window, cx);
+            field
         });
-        (editor, sub)
+        let sub = cx.subscribe_in(&title, window, |this, field, ev: &InputEvent, window, cx| match ev {
+            InputEvent::PressEnter { .. } => {
+                this.keep_title(field, window, cx);
+                this.focus_editor_or_shell(window, cx);
+                cx.notify();
+            }
+            InputEvent::Blur => this.keep_title(field, window, cx),
+            _ => {}
+        });
+        (title, sub)
+    }
+
+    fn keep_title(&mut self, field: &Entity<TextareaState>, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ix) = self.tabs.iter().position(|t| t.title == *field) {
+            self.keep_title_at(ix, window, cx);
+        }
+    }
+
+    /// The name in a tab's field goes to the file. One that cannot be
+    /// used puts the file's own name back. A line break, from ⇧↩ or a
+    /// paste, is a space: a file's name has none.
+    fn keep_title_at(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let path = self.tabs[ix].path.clone();
+        let field = self.tabs[ix].title.clone();
+        let typed = field.read(cx).value().to_string();
+        let name = one_line(&typed);
+        let kept = name.is_empty() || name == vault::title(&path) || self.rename_entry(&path, &name, window, cx);
+        if !kept || name.is_empty() || name != typed {
+            let shown = self.tabs.get(ix).map(|t| vault::title(&t.path)).unwrap_or_default();
+            field.update(cx, |f, cx| f.set_value(shown, window, cx));
+        }
+    }
+
+    /// Esc in a note's name: what was typed goes, and the keyboard with it.
+    fn drop_title(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(tab) = self.shown_tab() {
+            let (field, name) = (tab.title.clone(), vault::title(&tab.path));
+            field.update(cx, |f, cx| f.set_value(name, window, cx));
+        }
+        self.focus_editor_or_shell(window, cx);
+        cx.notify();
     }
 
     /// A note opened: its tab shows, made if it was not open, at the end
@@ -725,7 +894,8 @@ impl Shell {
         match vault::read(&path) {
             Ok(text) => {
                 let (editor, sub) = self.make_editor(&path, &text, cx);
-                self.tabs.push(Tab { path: path.clone(), editor, dirty: false, saved: text, _sub: sub });
+                let (title, title_sub) = self.make_title(&path, window, cx);
+                self.tabs.push(Tab { path: path.clone(), editor, title, dirty: false, saved: text, _sub: sub, _title_sub: title_sub });
                 self.closed_tabs.retain(|c| *c != path);
                 self.sort_tabs();
                 self.show_tab(&path, window, cx);
@@ -768,6 +938,10 @@ impl Shell {
     /// next tab shows in its place, or with none left the vault's page.
     pub(crate) fn close_tab(&mut self, path: &Path, window: &mut Window, cx: &mut Context<Self>) {
         let Some(ix) = self.tabs.iter().position(|t| t.path == path) else { return };
+        // A name being typed is kept first; the note's path may move with it.
+        self.keep_title_at(ix, window, cx);
+        let path = self.tabs[ix].path.clone();
+        let path = path.as_path();
         self.save_tab(ix, cx);
         self.tabs.remove(ix);
         self.closed_tabs.retain(|c| c != path);
@@ -916,9 +1090,19 @@ impl Shell {
         Some(self.shown.as_ref().and_then(|n| n.parent()).map(Path::to_path_buf).unwrap_or_else(|| root.to_path_buf()))
     }
 
+    /// A link out of the app, to the system. A probe says it and opens
+    /// nothing: a copy under a script stays in its window.
+    fn open_outside(&self, target: &str) {
+        if std::env::var_os("ONYX_GO").is_some() {
+            eprintln!("open {target}");
+        } else {
+            crate::sys::open(target);
+        }
+    }
+
     fn open_link(&mut self, url: &str, cx: &mut Context<Self>) {
         if url.contains("://") || url.starts_with("mailto:") {
-            crate::sys::open(url);
+            self.open_outside(url);
             return;
         }
         // A path relative to the note: a note of the vault opens here,
@@ -935,7 +1119,7 @@ impl Shell {
                 });
             });
         } else if path.exists() {
-            crate::sys::open(&path.to_string_lossy());
+            self.open_outside(&path.to_string_lossy());
         }
     }
 
@@ -993,38 +1177,57 @@ impl Shell {
     fn finish_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(path) = self.rename.take() else { return };
         let name = self.rename_input.read(cx).value().to_string();
-        match vault::rename(&path, &name) {
-            Ok(new_path) => {
-                // An open note follows its new path, and so does one
-                // inside a renamed folder. The tab's editor listens by
-                // the old path, so it is made to listen by the new one.
-                let moved: Vec<(usize, PathBuf)> = self.tabs.iter().enumerate().filter_map(|(ix, t)| if t.path == path { Some((ix, new_path.clone())) } else { t.path.strip_prefix(&path).ok().map(|rest| (ix, new_path.join(rest))) }).collect();
-                for (ix, to) in moved {
-                    let editor = self.tabs[ix].editor.clone();
-                    let at = to.clone();
-                    let sub = cx.subscribe(&editor, move |this, _, ev: &EditorEvent, cx| match ev {
-                        EditorEvent::Changed => this.note_changed(&at, cx),
-                        EditorEvent::OpenLink(url) => this.open_link(url, cx),
-                        EditorEvent::OpenNote(name) => this.open_wikilink(name, cx),
-                    });
-                    if self.shown.as_ref() == Some(&self.tabs[ix].path) {
-                        self.shown = Some(to.clone());
-                    }
-                    self.tabs[ix].path = to;
-                    self.tabs[ix]._sub = sub;
-                }
-                if let Some(v) = self.vault.as_mut() {
-                    if v.folded.remove(&path) {
-                        v.folded.insert(new_path.clone());
-                    }
-                }
-                self.reread_tree(cx);
-                self.save_ui(window);
-            }
-            Err(e) => self.say(tf("The name was not changed: {why}", &[("why", &e)]), cx),
-        }
+        self.rename_entry(&path, &name, window, cx);
         self.focus_editor_or_shell(window, cx);
         cx.notify();
+    }
+
+    /// An entry takes a new name, and everything that knows it by its
+    /// path follows: an open note, one inside a renamed folder, and what
+    /// is remembered of them. False when the name could not be used,
+    /// which is said.
+    fn rename_entry(&mut self, path: &Path, name: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let new_path = match vault::rename(path, name) {
+            Ok(new_path) => new_path,
+            Err(e) => {
+                self.say(tf("The name was not changed: {why}", &[("why", &e)]), cx);
+                return false;
+            }
+        };
+        let moved = |p: &Path| if p == path { Some(new_path.clone()) } else { p.strip_prefix(path).ok().map(|rest| new_path.join(rest)) };
+        // The tab's editor listens by the old path, so it is made to
+        // listen by the new one.
+        for ix in 0..self.tabs.len() {
+            let Some(to) = moved(&self.tabs[ix].path) else { continue };
+            let sub = Self::listen(&self.tabs[ix].editor.clone(), to.clone(), cx);
+            if self.shown.as_ref() == Some(&self.tabs[ix].path) {
+                self.shown = Some(to.clone());
+            }
+            let name = vault::title(&to);
+            self.tabs[ix].title.update(cx, |f, cx| {
+                if f.value() != name {
+                    f.set_value(name, window, cx);
+                }
+            });
+            self.tabs[ix].path = to;
+            self.tabs[ix]._sub = sub;
+        }
+        if let Some(to) = self.last_shown.as_deref().and_then(moved) {
+            self.last_shown = Some(to);
+        }
+        for p in &mut self.closed_tabs {
+            if let Some(to) = moved(p) {
+                *p = to;
+            }
+        }
+        if let Some(v) = self.vault.as_mut() {
+            if v.folded.remove(path) {
+                v.folded.insert(new_path.clone());
+            }
+        }
+        self.reread_tree(cx);
+        self.save_ui(window);
+        true
     }
 
     fn cancel_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1034,7 +1237,7 @@ impl Shell {
     }
 
     fn focus_editor_or_shell(&self, window: &mut Window, cx: &mut Context<Self>) {
-        match self.shown_editor().filter(|_| self.mode != Mode::Reading) {
+        match self.shown_editor() {
             Some(editor) => window.focus(&editor.read(cx).focus_handle(cx), cx),
             None => window.focus(&self.focus, cx),
         }
@@ -1047,36 +1250,200 @@ impl Shell {
         for p in going {
             self.close_tab(&p, window, cx);
         }
-        if let Err(e) = vault::trash(&path) {
+        // A probe says it: the Trash is the person's.
+        if std::env::var_os("ONYX_GO").is_some() {
+            eprintln!("trash {}", path.display());
+        } else if let Err(e) = vault::trash(&path) {
             self.say(tf("It was not moved to the trash: {why}", &[("why", &e)]), cx);
         }
         self.reread_tree(cx);
         self.save_ui(window);
     }
 
+    /// A note's or a folder's menu, one menu wherever it is opened: its
+    /// row, its tab. In the order every menu here keeps: what changes the
+    /// thing's name, what copies it, what opens or shows it, what closes
+    /// it, and what cannot be taken back last, a line of its own.
     fn entry_menu(&self, path: &Path) -> Vec<Entry> {
-        let reveal = crate::sys::REVEAL_LABEL;
+        let copies = |into: &mut Vec<Entry>| {
+            into.push(Entry::choice("copy-path", "icons/link.svg", t("Copy Path")));
+            into.push(Entry::choice("copy-rel", "icons/link.svg", t("Copy Relative Path")));
+        };
+        let mut items = vec![Entry::choice("rename", "icons/pencil-simple.svg", t("Rename")), Entry::Rule];
         if path.is_dir() {
-            vec![
-                Entry::choice("new-note", "icons/file-plus.svg", t("New Note")),
-                Entry::choice("new-folder", "icons/folder-plus.svg", t("New Folder")),
-                Entry::Rule,
-                Entry::choice("reveal", "icons/folder.svg", t(reveal)),
-                Entry::Rule,
-                Entry::choice("rename", "icons/pencil-simple.svg", t("Rename…")),
-                Entry::choice("trash", "icons/trash.svg", t("Move to Trash")),
-            ]
+            items.push(Entry::choice("new-note", "icons/file-plus.svg", t("New Note")));
+            items.push(Entry::choice("new-folder", "icons/folder-plus.svg", t("New Folder")));
+            items.push(Entry::Rule);
+            copies(&mut items);
+            items.push(Entry::Rule);
+            items.push(Entry::choice("open-finder", "icons/folder-open.svg", t(crate::sys::OPEN_FOLDER_LABEL)));
         } else {
-            vec![
-                Entry::choice("open", "icons/external-link.svg", t("Open")),
-                Entry::choice("reveal", "icons/folder.svg", t(reveal)),
-                Entry::Rule,
-                Entry::choice("copy-path", "icons/copy.svg", t("Copy Path")),
-                Entry::Rule,
-                Entry::choice("rename", "icons/pencil-simple.svg", t("Rename…")),
-                Entry::choice("trash", "icons/trash.svg", t("Move to Trash")),
-            ]
+            copies(&mut items);
+            items.push(Entry::Rule);
+            if self.shown.as_deref() != Some(path) {
+                items.push(Entry::choice("open", "icons/external-link.svg", t("Open")));
+            }
+            items.push(Entry::choice("reveal", "icons/folder-open.svg", t(crate::sys::REVEAL_LABEL)));
+            if self.tabs.iter().any(|t| t.path == path) {
+                items.push(Entry::Rule);
+                items.push(Entry::choice("close-tab", "icons/close.svg", t("Close Tab")));
+                if self.tabs.len() > 1 {
+                    items.push(Entry::choice("close-others", "icons/circle-x.svg", t("Close Other Tabs")));
+                }
+            }
         }
+        items.push(Entry::Rule);
+        items.push(Entry::choice("trash", "icons/trash.svg", t("Move to Trash")));
+        items
+    }
+
+    /// The vault's name: which vault is open.
+    fn show_vault_menu(&mut self, at: Point<Pixels>, cx: &mut Context<Self>) {
+        let mut entries = vec![Entry::choice("new", "icons/plus.svg", t("New Vault…")), Entry::choice("open-other", "icons/folder-open.svg", t("Open Vault…"))];
+        if self.vault.is_some() {
+            entries.push(Entry::choice("reveal", "icons/folder-open.svg", t(crate::sys::REVEAL_LABEL)));
+            entries.push(Entry::Rule);
+            entries.push(Entry::choice("close", "icons/arrow-left.svg", t("Close Vault")));
+        }
+        self.menus.show("vault", at, entries);
+        cx.notify();
+    }
+
+    /// The menu of a note or a folder, at the pointer.
+    pub(crate) fn show_entry_menu(&mut self, path: PathBuf, at: Point<Pixels>, cx: &mut Context<Self>) {
+        let entries = self.entry_menu(&path);
+        self.pressed = Some(path);
+        self.menus.show("entry", at, entries);
+        cx.notify();
+    }
+
+    /// The vault's own menu, in the tree's empty room.
+    fn show_vault_room_menu(&mut self, at: Point<Pixels>, cx: &mut Context<Self>) {
+        let Some(root) = self.vault_root().map(Path::to_path_buf) else { return };
+        let entries = vec![
+            Entry::choice("new-note", "icons/file-plus.svg", t("New Note")),
+            Entry::choice("new-folder", "icons/folder-plus.svg", t("New Folder")),
+            Entry::Rule,
+            Entry::choice("copy-path", "icons/link.svg", t("Copy Path")),
+            Entry::Rule,
+            Entry::choice("open-finder", "icons/folder-open.svg", t(crate::sys::OPEN_FOLDER_LABEL)),
+            Entry::Rule,
+            Entry::choice("collapse", "icons/copy-minus.svg", t("Collapse All Folders")),
+        ];
+        self.pressed = Some(root);
+        self.menus.show("entry", at, entries);
+        cx.notify();
+    }
+
+    /// A folder's handle on the tabs' row: where it is, and its tabs.
+    pub(crate) fn show_pill_menu(&mut self, folder: PathBuf, at: Point<Pixels>, cx: &mut Context<Self>) {
+        let entries = vec![
+            Entry::choice("copy-path", "icons/link.svg", t("Copy Path")),
+            Entry::choice("copy-rel", "icons/link.svg", t("Copy Relative Path")),
+            Entry::Rule,
+            Entry::choice("open-finder", "icons/folder-open.svg", t(crate::sys::OPEN_FOLDER_LABEL)),
+            Entry::Rule,
+            Entry::choice("close-folder", "icons/circle-x.svg", t("Close Tabs")),
+        ];
+        self.pressed = Some(folder);
+        self.menus.show("entry", at, entries);
+        cx.notify();
+    }
+
+    /// The path over the page.
+    fn show_path_menu(&mut self, target: PathBuf, at: Point<Pixels>, cx: &mut Context<Self>) {
+        let mut entries = vec![Entry::choice("copy-path", "icons/link.svg", t("Copy Path"))];
+        if self.vault_root() != Some(target.as_path()) {
+            entries.push(Entry::choice("copy-rel", "icons/link.svg", t("Copy Relative Path")));
+        }
+        entries.push(Entry::Rule);
+        entries.push(if target.is_dir() { Entry::choice("open-finder", "icons/folder-open.svg", t(crate::sys::OPEN_FOLDER_LABEL)) } else { Entry::choice("reveal", "icons/folder-open.svg", t(crate::sys::REVEAL_LABEL)) });
+        self.pressed = Some(target);
+        self.menus.show("entry", at, entries);
+        cx.notify();
+    }
+
+    /// A note found in the search.
+    fn show_found_menu(&mut self, path: PathBuf, at: Point<Pixels>, cx: &mut Context<Self>) {
+        let entries = vec![
+            Entry::choice("copy-path", "icons/link.svg", t("Copy Path")),
+            Entry::choice("copy-rel", "icons/link.svg", t("Copy Relative Path")),
+            Entry::Rule,
+            Entry::choice("open", "icons/external-link.svg", t("Open")),
+            Entry::choice("reveal", "icons/folder-open.svg", t(crate::sys::REVEAL_LABEL)),
+        ];
+        self.pressed = Some(path);
+        self.menus.show("found", at, entries);
+        cx.notify();
+    }
+
+    /// A vault offered on the landing page.
+    fn show_recent_menu(&mut self, path: PathBuf, at: Point<Pixels>, cx: &mut Context<Self>) {
+        let entries = vec![
+            Entry::choice("copy-path", "icons/link.svg", t("Copy Path")),
+            Entry::Rule,
+            Entry::choice("open", "icons/external-link.svg", t("Open")),
+            Entry::choice("open-finder", "icons/folder-open.svg", t(crate::sys::OPEN_FOLDER_LABEL)),
+        ];
+        self.pressed = Some(path);
+        self.menus.show("recent", at, entries);
+        cx.notify();
+    }
+
+    /// The note's words: on a link, what it goes to and what it gives the
+    /// clipboard; anywhere else what a text offers, in a note that takes
+    /// no change only what leaves it as it is.
+    fn canvas_menu(&mut self, editor: Entity<Editor>, at: Point<Pixels>, link: Option<MenuLink>, cx: &mut Context<Self>) {
+        let (selection, locked, focus) = {
+            let e = editor.read(cx);
+            (e.has_selection(), e.locked(), e.focus_handle(cx))
+        };
+        let entries = match &link {
+            Some(link) => {
+                let mut items = vec![Entry::choice("open-link", "icons/external-link.svg", if link.note.is_some() { t("Open Note") } else { t("Open Link") }), Entry::Rule];
+                if link.url.is_some() {
+                    items.push(Entry::choice("copy-link", "icons/link.svg", t("Copy Link")));
+                }
+                if !link.words.trim().is_empty() {
+                    items.push(Entry::choice("copy-text", "icons/typography.svg", t("Copy Text")));
+                }
+                if !link.raw.trim().is_empty() {
+                    items.push(Entry::choice("copy-markdown", "icons/markdown.svg", t("Copy Markdown")));
+                }
+                items
+            }
+            None => crate::menu::edit_entries(selection, cx.read_from_clipboard().is_some(), locked),
+        };
+        self.menu_focus = Some(focus);
+        self.menu_link = link;
+        self.menus.show("canvas", at, entries);
+        cx.notify();
+    }
+
+    /// A text field's menu, handed to the field for its right click. The
+    /// field calls this from inside its own update, where it cannot be
+    /// read, so the menu is made a moment later.
+    pub(crate) fn input_menu<M: gpui_base::input::InputModeKind>(input: &Entity<gpui_base::input::InputBaseState<M>>, what: &'static str, cx: &mut Context<Self>) -> impl Fn(Point<Pixels>, &mut Window, &mut App) + 'static {
+        let (this, input) = (cx.entity().downgrade(), input.clone());
+        move |at, window, cx| {
+            let (this, input) = (this.clone(), input.clone());
+            window.defer(cx, move |_, cx| {
+                let (selection, focus) = {
+                    let state = input.read(cx);
+                    (!state.selected_range().is_empty(), gpui::Focusable::focus_handle(state, cx))
+                };
+                let clipboard = cx.read_from_clipboard().is_some();
+                let _ = this.update(cx, |this, cx| {
+                    this.menu_focus = Some(focus);
+                    this.menus.show(what, at, crate::menu::edit_entries(selection, clipboard, false));
+                    cx.notify();
+                });
+            });
+        }
+    }
+
+    fn copy_text(text: impl Into<String>, cx: &mut Context<Self>) {
+        crate::widgets::to_clipboard(text, cx);
     }
 
     fn menu_pick(&mut self, what: &'static str, id: SharedString, window: &mut Window, cx: &mut Context<Self>) {
@@ -1093,9 +1460,96 @@ impl Shell {
                     crate::sys::reveal(&p);
                 }
             }
-            ("entry", "copy-path") => {
+            ("entry" | "found" | "recent", "copy-path") => {
                 if let Some(p) = pressed {
-                    cx.write_to_clipboard(ClipboardItem::new_string(p.to_string_lossy().to_string()));
+                    Self::copy_text(p.to_string_lossy(), cx);
+                }
+            }
+            ("entry" | "found", "copy-rel") => {
+                if let (Some(p), Some(root)) = (pressed, self.vault_root()) {
+                    Self::copy_text(p.strip_prefix(root).unwrap_or(&p).to_string_lossy(), cx);
+                }
+            }
+            ("entry" | "recent", "open-finder") => {
+                if let Some(p) = pressed {
+                    self.open_outside(&p.to_string_lossy());
+                }
+            }
+            ("entry", "close-tab") => {
+                if let Some(p) = pressed {
+                    self.close_tab(&p, window, cx);
+                }
+            }
+            ("entry", "close-others") => {
+                if let Some(p) = pressed {
+                    for other in self.tabs.iter().map(|t| t.path.clone()).filter(|o| *o != p).collect::<Vec<_>>() {
+                        self.close_tab(&other, window, cx);
+                    }
+                }
+            }
+            ("entry", "close-folder") => {
+                if let Some(p) = pressed {
+                    for tab in self.tabs.iter().map(|t| t.path.clone()).filter(|o| o.parent() == Some(p.as_path())).collect::<Vec<_>>() {
+                        self.close_tab(&tab, window, cx);
+                    }
+                }
+            }
+            ("entry", "collapse") => {
+                fn folders(entries: &[vault::Entry], into: &mut HashSet<PathBuf>) {
+                    for e in entries.iter().filter(|e| e.dir) {
+                        into.insert(e.path.clone());
+                        folders(&e.children, into);
+                    }
+                }
+                if let Some(v) = self.vault.as_mut() {
+                    let children = v.tree.children.clone();
+                    folders(&children, &mut v.folded);
+                }
+                self.save_ui(window);
+            }
+            ("found", "open") => {
+                if let Some(p) = pressed {
+                    self.close_search(window, cx);
+                    self.open_note(p, window, cx);
+                }
+            }
+            ("found", "reveal") => {
+                if let Some(p) = pressed {
+                    crate::sys::reveal(&p);
+                }
+            }
+            ("recent", "open") => {
+                if let Some(p) = pressed {
+                    self.open_vault(p, window, cx);
+                }
+            }
+            ("canvas", "open-link") => {
+                if let Some(link) = self.menu_link.take() {
+                    if let Some(url) = &link.url {
+                        self.open_link(url, cx);
+                    } else if let Some(note) = &link.note {
+                        self.open_wikilink(note, cx);
+                    }
+                }
+            }
+            ("canvas", "copy-link") => {
+                if let Some(url) = self.menu_link.take().and_then(|l| l.url) {
+                    Self::copy_text(url, cx);
+                }
+            }
+            ("canvas", "copy-text") => {
+                if let Some(link) = self.menu_link.take() {
+                    Self::copy_text(link.words, cx);
+                }
+            }
+            ("canvas", "copy-markdown") => {
+                if let Some(link) = self.menu_link.take() {
+                    Self::copy_text(link.raw, cx);
+                }
+            }
+            ("canvas" | "edit", id) => {
+                if let Some(focus) = self.menu_focus.take() {
+                    crate::menu::do_edit(id, &focus, window, cx);
                 }
             }
             ("entry", "rename") => {
@@ -1165,7 +1619,108 @@ impl Shell {
     }
 
     fn sidebar_moving(&self) -> bool {
-        self.side_anim.is_some_and(|(_, at)| at.elapsed() < SLIDE)
+        self.side_anim.is_some_and(|(_, at)| at.elapsed() < SLIDE) || self.side_w_anim.is_some_and(|(_, at)| at.elapsed() < SLIDE)
+    }
+
+    /// How wide the sidebar stands now, on its way there after a double
+    /// click on its edge.
+    fn sidebar_width(&self) -> Pixels {
+        match self.side_w_anim {
+            Some((from, at)) if at.elapsed() < SLIDE => from + (self.sidebar_w - from) * ease_out_quint()(at.elapsed().as_secs_f32() / SLIDE.as_secs_f32()),
+            _ => self.sidebar_w,
+        }
+    }
+
+    /// The pointer moved with the sidebar's edge held: the sidebar is as
+    /// wide as where the pointer is, between its least and most, and
+    /// folds away once the pointer is well left of the least. Brought
+    /// back out in the same drag, it is there again.
+    fn side_drag_to(&mut self, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if e.pressed_button != Some(MouseButton::Left) {
+            self.side_drag_end(window, cx);
+            return;
+        }
+        let open = e.position.x >= SIDEBAR_FOLD_AT;
+        if open != self.sidebar_open {
+            self.toggle_sidebar(window, cx);
+        }
+        if open {
+            self.sidebar_w = e.position.x.clamp(SIDEBAR_MIN, SIDEBAR_MAX);
+            self.side_w_anim = None;
+            cx.notify();
+        }
+    }
+
+    fn side_drag_end(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if std::mem::take(&mut self.side_drag) {
+            self.save_ui(window);
+            cx.notify();
+        }
+    }
+
+    /// The width at which the tree's rows in view of the folds are not
+    /// cut short, long outliers held to `SIDEBAR_FIT_MAX`. A double click
+    /// on the edge goes there.
+    fn sidebar_fit(&self, window: &Window, cx: &App) -> Pixels {
+        // Round a name: the card's margin and outline and the list's
+        // padding on both sides, then a row's padding, chevron, icon and
+        // gaps (`render_row`).
+        const CHROME: f32 = 2. * (8. + 1. + 8.) + 8. + 12. + 6. + 16. + 6. + 8.;
+        const DEPTH: f32 = 14.;
+        fn widest(entries: &[vault::Entry], depth: usize, folded: &HashSet<PathBuf>, measure: &dyn Fn(&str) -> f32) -> f32 {
+            entries.iter().fold(0., |most: f32, e| {
+                let inside = if e.dir && !folded.contains(&e.path) { widest(&e.children, depth + 1, folded, measure) } else { 0. };
+                most.max(DEPTH * depth as f32 + measure(&e.name)).max(inside)
+            })
+        }
+        let font = font(cx.theme().font_family.clone());
+        let measure = |text: &str| {
+            let run = TextRun { len: text.len(), font: font.clone(), color: gpui::black(), background_color: None, underline: None, strikethrough: None };
+            f32::from(window.text_system().shape_line(SharedString::from(text.to_string()), px(13.), &[run], None).width())
+        };
+        let names = self.vault.as_ref().map_or(0., |v| widest(&v.tree.children, 0, &v.folded, &measure));
+        px((CHROME + names).ceil()).clamp(SIDEBAR_MIN, SIDEBAR_FIT_MAX)
+    }
+
+    /// The strip over the card's left edge that takes the drag and the
+    /// double click, after emaki's: the sidebar's edge, or the rail's
+    /// while it is folded, from where the same drag brings it out. It
+    /// lights a line on the edge under the pointer, and the pointer keeps
+    /// its look wherever a drag takes it.
+    fn render_side_grip(&self, edge: Pixels, cx: &mut Context<Self>) -> impl IntoElement {
+        let line = cx.theme().primary.opacity(0.55);
+        let held = self.side_drag;
+        div()
+            .id("side-grip")
+            .group("side-grip")
+            .absolute()
+            .top(FRAME)
+            .bottom(FRAME)
+            .left(edge - SIDEBAR_GRIP / 2.)
+            .w(SIDEBAR_GRIP)
+            .occlude()
+            .cursor(CursorStyle::ResizeLeftRight)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, ev: &MouseDownEvent, window, cx| {
+                    swallow_click(window, cx);
+                    if ev.click_count == 2 {
+                        this.side_drag = false;
+                        this.side_w_anim = this.sidebar_open.then(|| (this.sidebar_width(), Instant::now()));
+                        this.sidebar_w = this.sidebar_fit(window, cx);
+                        if this.sidebar_open {
+                            this.save_ui(window);
+                        } else {
+                            this.toggle_sidebar(window, cx);
+                        }
+                    } else {
+                        this.side_drag = true;
+                    }
+                    cx.notify();
+                }),
+            )
+            .child(div().absolute().top(CARD_R).bottom(CARD_R).left(SIDEBAR_GRIP / 2. - px(1.5)).w(px(2.)).when(held, |d| d.bg(line)).group_hover("side-grip", move |s| s.bg(line)))
+            .when(held, |d| d.child(canvas(|_, _, _| (), |_, _, window, _| window.set_window_cursor_style(CursorStyle::ResizeLeftRight)).absolute().size_0()))
     }
 
     /// The frame's theme: the sidebar stands on the frame, which is a dark
@@ -1177,7 +1732,9 @@ impl Shell {
             theme.foreground = rgb(0xF3F1EA).into();
             theme.muted_foreground = rgb(0xA09D94).into();
             theme.mode = gpui_component::theme::ThemeMode::Dark;
-            theme.primary = Rgba::try_from(crate::look::on_frame(&self.cfg.app.accent)).map(Hsla::from).unwrap_or(theme.primary);
+            let (accent, on) = crate::look::on_frame(&self.cfg.app.accent);
+            theme.primary = Rgba::try_from(accent).map(Hsla::from).unwrap_or(theme.primary);
+            theme.primary_foreground = Rgba::try_from(on).map(Hsla::from).unwrap_or(theme.primary_foreground);
         }
         theme
     }
@@ -1298,7 +1855,7 @@ impl Shell {
                 .when(self.pressed.as_ref() == Some(&e.path), |d| d.bg(theme.foreground.opacity(0.1)))
                 .child(div().w(px(12.)).flex_shrink_0().flex().justify_center().when(e.dir, |d| d.child(Icon::default().path(if is_open_folder { "icons/chevron-down.svg" } else { "icons/chevron-right.svg" }).with_size(px(12.)).text_color(theme.muted_foreground))))
                 .child(img(icon).size(px(16.)).flex_shrink_0())
-                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().child(e.name.clone()))
+                .child(div().flex_1().min_w_0().truncate().child(e.name.clone()))
                 .on_click(cx.listener({
                     let path = path.clone();
                     let dir = e.dir;
@@ -1321,10 +1878,7 @@ impl Shell {
                     MouseButton::Right,
                     cx.listener(move |this, ev: &MouseDownEvent, window, cx| {
                         swallow_click(window, cx);
-                        this.pressed = Some(menu_path.clone());
-                        let entries = this.entry_menu(&menu_path);
-                        this.menus.show("entry", ev.position, entries);
-                        cx.notify();
+                        this.show_entry_menu(menu_path.clone(), ev.position, cx);
                     }),
                 );
         row.into_any_element()
@@ -1424,7 +1978,7 @@ impl Shell {
                     .child(Icon::new(IconName::Settings).with_size(px(16.)).text_color(theme.muted_foreground)),
             );
         v_flex()
-            .w(SIDEBAR_W)
+            .w(self.sidebar_width())
             .h_full()
             .flex_shrink_0()
             .text_color(theme.foreground)
@@ -1456,15 +2010,11 @@ impl Shell {
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(cx.listener(|this, ev: &ClickEvent, window, cx| {
                 swallow_click(window, cx);
-                let at = ev.position() + point(px(-8.), px(14.));
-                let mut entries = vec![Entry::choice("new", "icons/plus.svg", t("New Vault…")), Entry::choice("open-other", "icons/folder-open.svg", t("Open Vault…"))];
-                if this.vault.is_some() {
-                    entries.push(Entry::choice("reveal", "icons/folder.svg", t(crate::sys::REVEAL_LABEL)));
-                    entries.push(Entry::Rule);
-                    entries.push(Entry::choice("close", "icons/arrow-left.svg", t("Close Vault")));
-                }
-                this.menus.show("vault", at, entries);
-                cx.notify();
+                this.show_vault_menu(ev.position() + point(px(-8.), px(14.)), cx);
+            }))
+            .on_mouse_down(MouseButton::Right, cx.listener(|this, ev: &MouseDownEvent, window, cx| {
+                swallow_click(window, cx);
+                this.show_vault_menu(ev.position, cx);
             }))
             .child(div().flex_1().min_w_0().truncate().text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(theme.muted_foreground).child(vault_name))
             .child(Icon::default().path("icons/chevrons-up-down.svg").with_size(px(12.)).text_color(theme.muted_foreground));
@@ -1490,6 +2040,10 @@ impl Shell {
                     .child(
                         v_flex()
                             .id("side-list")
+                            .on_mouse_down(MouseButton::Right, cx.listener(|this, ev: &MouseDownEvent, window, cx| {
+                                swallow_click(window, cx);
+                                this.show_vault_room_menu(ev.position, cx);
+                            }))
                             .size_full()
                             .px(px(8.))
                             .pb(px(12.))
@@ -1500,8 +2054,9 @@ impl Shell {
                     )
                     // What is cut says so: the list fades into the
                     // card at an edge with more beyond it.
-                    .children(edge_fade(&self.side_scroll, ground, true))
-                    .children(edge_fade(&self.side_scroll, ground, false))
+                    .child(edge_fade(&self.side_scroll, ground, true, px(0.)))
+                    // The card's radius less its border.
+                    .child(edge_fade(&self.side_scroll, ground, false, px(9.)))
                     .vertical_scrollbar(&self.side_scroll),
             )
             .into_any_element()
@@ -1695,7 +2250,7 @@ impl Shell {
                         .left(RAIL_W + px(4.) - px(12.) * (1. - shown))
                         .top(FLY_TOP)
                         .bottom(FRAME * 2.)
-                        .w(SIDEBAR_W)
+                        .w(self.sidebar_w)
                         .rounded(px(12.))
                         .overflow_hidden()
                         .bg(frame)
@@ -1867,7 +2422,7 @@ impl Shell {
                             .border_b_1()
                             .border_color(theme.border)
                             .child(Icon::default().path("icons/search.svg").with_size(px(16.)).text_color(theme.muted_foreground))
-                            .child(div().id("search-field").track_focus(&focus).flex_1().min_w_0().text_size(px(14.)).child(Input::new(&self.search_input).appearance(false).bordered(false))),
+                            .child(div().id("search-field").track_focus(&focus).flex_1().min_w_0().text_size(px(14.)).child(Input::new(&self.search_input).appearance(false).bordered(false).on_secondary_click(Self::input_menu(&self.search_input, "edit", cx)))),
                     )
                     .child(
                         v_flex().relative().flex_1().min_h_0().pb(px(8.)).vertical_scrollbar(&self.search_scroll).child(v_flex().id("search-results").flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.search_scroll).px(px(8.)).pt(px(8.)).map(|d| match results {
@@ -1886,6 +2441,13 @@ impl Shell {
                                     .rounded(px(10.))
                                     .cursor_pointer()
                                     .hover(|st| st.bg(theme.list_hover))
+                                    .on_mouse_down(MouseButton::Right, cx.listener({
+                                        let path = path.clone();
+                                        move |this, ev: &MouseDownEvent, window, cx| {
+                                            swallow_click(window, cx);
+                                            this.show_found_menu(path.clone(), ev.position, cx);
+                                        }
+                                    }))
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         swallow_click(window, cx);
                                         this.open_found(path.clone(), &query, window, cx);
@@ -1893,7 +2455,7 @@ impl Shell {
                                     .child(h_flex().gap(px(8.)).child(div().flex_1().min_w_0().truncate().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child(n.title.clone())).child(div().flex_shrink_0().text_size(px(11.)).text_color(theme.muted_foreground).child(where_)))
                                     .children(n.snippets.into_iter().map(|sn| {
                                         let marks: Vec<(std::ops::Range<usize>, HighlightStyle)> = sn.marks.into_iter().map(|r| (r, mark)).collect();
-                                        div().w_full().overflow_hidden().whitespace_nowrap().child(StyledText::new(sn.text).with_default_highlights(&style, marks))
+                                        div().w_full().truncate().child(StyledText::new(sn.text).with_default_highlights(&style, marks))
                                     }))
                             })),
                         })),
@@ -1937,7 +2499,7 @@ impl Shell {
         h_flex()
             .w_full()
             .justify_center()
-            .px(px(24.))
+            .px(SHEET_MARGIN)
             .py(px(8.))
             .child(
                 h_flex()
@@ -1947,8 +2509,8 @@ impl Shell {
                         cx.stop_propagation();
                         this.close_find(window, cx)
                     }))
-                    .w_full()
-                    .max_w(READABLE_W)
+                    .w(px(sheet_width(self.width_level(), self.page_w)))
+                    .max_w_full()
                     .h(px(36.))
                     .px(px(10.))
                     .gap(px(8.))
@@ -1959,7 +2521,7 @@ impl Shell {
                     .bg(theme.popover)
                     .shadow_sm()
                     .child(Icon::default().path("icons/search.svg").with_size(px(14.)).text_color(theme.muted_foreground))
-                    .child(div().id("find-field").track_focus(&focus).flex_1().min_w_0().text_size(px(13.)).child(Input::new(&self.find_input).appearance(false).bordered(false)))
+                    .child(div().id("find-field").track_focus(&focus).flex_1().min_w_0().text_size(px(13.)).child(Input::new(&self.find_input).appearance(false).bordered(false).on_secondary_click(Self::input_menu(&self.find_input, "edit", cx))))
                     .child(div().text_size(px(11.5)).flex_shrink_0().text_color(if n == 0 && !empty { theme.danger } else { theme.muted_foreground }).child(count))
                     .child(button("find-prev", "icons/chevron-up.svg", t("Previous (⇧↩)").into()).on_click(cx.listener(|this, _, window, cx| {
                         swallow_click(window, cx);
@@ -2104,6 +2666,13 @@ impl Shell {
             .text_size(px(11.))
             .managed_tooltip(|window, cx| tip(t(crate::sys::REVEAL_LABEL), window, cx))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(MouseButton::Right, cx.listener({
+                let target = target.clone();
+                move |this, ev: &MouseDownEvent, window, cx| {
+                    swallow_click(window, cx);
+                    this.show_path_menu(target.clone(), ev.position, cx);
+                }
+            }))
             .on_click(cx.listener(move |_, _, window, cx| {
                 swallow_click(window, cx);
                 crate::sys::reveal(&target);
@@ -2113,22 +2682,14 @@ impl Shell {
         Some(
             h_flex()
                 .w_full()
-                .h(px(34.))
+                .h(PATH_BAR_H)
                 .flex_shrink_0()
-                // The squares stand 6 from the bar's ends, as they do
-                // from its hairlines above and below.
-                .px(px(6.))
-                .gap(px(10.))
+                // No ground and no line of its own: it stands on the
+                // page's tint, which begins under the tabs' row.
+                .px(px(PATH_BAR_PAD))
+                .justify_center()
                 .items_center()
-                .bg(theme.muted.opacity(0.3))
-                .border_t_1()
-                .border_b_1()
-                .border_color(theme.border)
-                // Both ends as wide as the wider group, so the path keeps
-                // one center line whether a note shows or not.
-                .child(h_flex().min_w(BAR_END).flex_shrink_0().items_center().when(self.shown.is_some(), |d| d.child(self.render_mode_group(cx))))
-                .child(h_flex().flex_1().min_w_0().justify_center().child(chip))
-                .child(h_flex().min_w(BAR_END).flex_shrink_0().justify_end().items_center().when(self.shown.is_some(), |d| d.child(self.render_width_group(cx))))
+                .child(chip)
                 .into_any_element(),
         )
     }
@@ -2136,12 +2697,164 @@ impl Shell {
     /// How the note is shown, three squares in a group at the bar's
     /// left, each in its own color: the pencil in amber, the source in
     /// blue, the book in green.
-    fn render_mode_group(&self, cx: &mut Context<Self>) -> AnyElement {
+    /// The ends of the tabs' row: how notes are shown at the left and how
+    /// wide at the right, each a square with its choice on it, only while
+    /// a note shows, since neither says anything to the vault's page. Both
+    /// ends keep their width with or without them, so the tabs keep one
+    /// center line, and the squares fade as they come and go.
+    fn render_strip_ends(&self, cx: &mut Context<Self>) -> (AnyElement, AnyElement) {
+        let on = self.shown.is_some();
+        let moving = self.motion.presence("strip-ends", on, cx);
+        let fade = |square: AnyElement, id: &'static str| -> AnyElement {
+            match moving {
+                Some((coming, serial)) => div().child(square).with_animation((id, serial as u64), Animation::new(crate::widgets::FOLD_ANIM).with_easing(ease_out_quint()), move |d, t| d.opacity(if coming { t } else { 1. - t })).into_any_element(),
+                None => square,
+            }
+        };
+        let drawn = on || moving.is_some();
+        let modes = h_flex().w(STRIP_CAP).flex_shrink_0().items_center().when(drawn, |d| d.child(fade(self.render_strip_square(StripEnd::Modes, cx), "strip-modes"))).into_any_element();
+        let widths = h_flex().w(STRIP_CAP).flex_shrink_0().justify_end().items_center().when(drawn, |d| d.child(fade(self.render_strip_square(StripEnd::Widths, cx), "strip-widths"))).into_any_element();
+        (modes, widths)
+    }
+
+    /// A group at rest: the group's line with the choice in it and no
+    /// plate, which says which of several is chosen and here there is one.
+    /// The group that opens is this same line grown.
+    fn render_strip_square(&self, end: StripEnd, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme().clone();
+        let (id, icon, label, tint): (&'static str, &'static str, SharedString, Hsla) = match end {
+            StripEnd::Modes => match self.mode {
+                Mode::Live => ("strip-modes-square", "icons/pencil-simple.svg", t("Edit (⌃1)").into(), theme.warning),
+                Mode::Source => ("strip-modes-square", "icons/file-code.svg", t("Source (⌃2)").into(), theme.info),
+                Mode::Reading => ("strip-modes-square", "icons/book-open.svg", t("Read (⌃3)").into(), theme.success),
+            },
+            StripEnd::Widths => match self.width {
+                PageWidth::Narrow => ("strip-widths-square", "icons/width-narrow.svg", t("Narrow (⌥1)").into(), theme.primary),
+                PageWidth::Middle => ("strip-widths-square", "icons/width-middle.svg", t("Middle (⌥2)").into(), theme.primary),
+                PageWidth::Wide => ("strip-widths-square", "icons/width-wide.svg", t("Wide (⌥3)").into(), theme.primary),
+            },
+        };
+        let hover_bg = theme.muted;
+        div()
+            .id(id)
+            .size(STRIP_CAP)
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(STRIP_CAP_R)
+            .border_1()
+            .border_color(theme.border)
+            .cursor_pointer()
+            .hover(|s| s.bg(hover_bg))
+            .managed_tooltip(move |window, cx| tip(label.clone(), window, cx))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(cx.listener(move |this, _, window, cx| {
+                swallow_click(window, cx);
+                this.strip_fly = Some((end, Instant::now(), true, this.strip_fly_open()));
+                cx.notify();
+            }))
+            .child(Icon::default().path(icon).with_size(px(14.)).text_color(tint))
+            .into_any_element()
+    }
+
+    /// How open the group is, from 0 at its square to 1 at its three,
+    /// eased on the window's clock.
+    fn strip_fly_open(&self) -> f32 {
+        let Some((_, at, open, from)) = self.strip_fly else { return 0. };
+        let to = if open { 1. } else { 0. };
+        from + (to - from) * ease_out_quint()((at.elapsed().as_secs_f32() / SLIDE.as_secs_f32()).min(1.))
+    }
+
+    /// It folds back from wherever it stands, so a press while it opens
+    /// turns it without a jump.
+    fn strip_fly_close(&mut self, cx: &mut Context<Self>) {
+        if let Some((end, _, true, _)) = self.strip_fly {
+            self.strip_fly = Some((end, Instant::now(), false, self.strip_fly_open()));
+            cx.notify();
+        }
+    }
+
+    /// A group, open in place: its line widens along the row to hold the
+    /// three, the chosen square sliding from where it stood to its own
+    /// place on a plate that comes as it opens, while the others come out
+    /// from behind it. It lies over the tabs and moves nothing, solid, with a line and a small shadow that
+    /// comes as it opens, so a tab under it passes behind a clean edge. A
+    /// choice folds it, and so does a press anywhere else.
+    fn render_strip_fly(&mut self, card_x: Pixels, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (end, at, open, _) = self.strip_fly?;
+        let done = at.elapsed() >= SLIDE;
+        if !open && done {
+            self.strip_fly = None;
+            return None;
+        }
+        if !done {
+            window.request_animation_frame();
+        }
+        let shown = self.strip_fly_open();
+        let theme = cx.theme().clone();
+        // Where the choice stands in its group, counted from the end the
+        // group opens away from.
+        let (group, from_end) = match end {
+            StripEnd::Modes => (
+                self.render_mode_group(shown, cx),
+                match self.mode {
+                    Mode::Live => 0.,
+                    Mode::Source => 1.,
+                    Mode::Reading => 2.,
+                },
+            ),
+            StripEnd::Widths => (self.render_width_group(shown, cx), 2. - self.width.level()),
+        };
+        let scrim = open.then(|| {
+            div().id("strip-fly-scrim").absolute().inset_0().occlude().on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    swallow_click(window, cx);
+                    this.strip_fly_close(cx);
+                }),
+            )
+        });
+        let dark = theme.mode.is_dark();
+        let lift = vec![BoxShadow { color: gpui::black().opacity(if dark { 0.4 } else { 0.1 } * shown), offset: point(px(0.), px(2.)), blur_radius: px(8.), spread_radius: px(0.), inset: false }];
+        let w = STRIP_CAP + (GROUP_W - STRIP_SQUARE) * shown;
+        let slide = (STRIP_SQUARE + px(2.)) * from_end * (1. - shown);
+        let top = FRAME + (TITLEBAR_H - FRAME - STRIP_CAP) / 2.;
+        let right = FRAME + STRIP_END + crate::csd::room(window, cx).1;
+        Some(
+            div()
+                .absolute()
+                .inset_0()
+                .children(scrim)
+                .child(
+                    div()
+                        .id("strip-fly")
+                        .occlude()
+                        .absolute()
+                        .top(top)
+                        .map(|d| if end == StripEnd::Modes { d.left(card_x + STRIP_END) } else { d.right(right) })
+                        .w(w)
+                        .h(STRIP_CAP)
+                        .rounded(STRIP_CAP_R)
+                        .bg(theme.background)
+                        .border_1()
+                        .border_color(theme.border)
+                        .shadow(lift)
+                        // The clip is the inside of the line, which the
+                        // squares do not cross on their way out.
+                        .child(div().relative().size_full().overflow_hidden().child(div().absolute().top(STRIP_INSET).w(GROUP_W).flex().map(|d| if end == StripEnd::Modes { d.left(STRIP_INSET - slide).justify_start() } else { d.right(STRIP_INSET - slide).justify_end() }).child(group))),
+                )
+                .into_any_element(),
+        )
+    }
+
+    fn render_mode_group(&self, lift: f32, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
         let modes = self.motion.segmented_tinted(
             "mode",
-            vec![("live", "icons/pencil-simple.svg", t("Edit (⌥1)").into(), theme.warning), ("source", "icons/file-code.svg", t("Source (⌥2)").into(), theme.info), ("reading", "icons/book-open.svg", t("Read (⌥3)").into(), theme.success)],
+            vec![("live", "icons/pencil-simple.svg", t("Edit (⌃1)").into(), theme.warning), ("source", "icons/file-code.svg", t("Source (⌃2)").into(), theme.info), ("reading", "icons/book-open.svg", t("Read (⌃3)").into(), theme.success)],
             self.mode.key(),
+            lift,
             Rc::new(|this: &mut Self, key, window, cx| this.set_mode(Mode::from_key(key), window, cx)),
             cx,
         );
@@ -2150,13 +2863,14 @@ impl Shell {
 
     /// How wide the note runs, Normal or Wide, a group of two at the
     /// bar's right in the accent.
-    fn render_width_group(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_width_group(&self, lift: f32, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
         let widths = self.motion.segmented_tinted(
             "width",
-            vec![("normal", "icons/viewport-narrow.svg", t("Normal width").into(), theme.primary), ("wide", "icons/viewport-wide.svg", t("Wide").into(), theme.primary)],
-            if self.shown_wide() { "wide" } else { "normal" },
-            Rc::new(|this: &mut Self, key, window, cx| this.set_wide(key == "wide", window, cx)),
+            vec![("narrow", "icons/width-narrow.svg", t("Narrow (⌥1)").into(), theme.primary), ("middle", "icons/width-middle.svg", t("Middle (⌥2)").into(), theme.primary), ("wide", "icons/width-wide.svg", t("Wide (⌥3)").into(), theme.primary)],
+            self.width.key(),
+            lift,
+            Rc::new(|this: &mut Self, key, window, cx| this.set_width(PageWidth::from_key(key), window, cx)),
             cx,
         );
         div().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).child(widths).into_any_element()
@@ -2164,6 +2878,7 @@ impl Shell {
 
     pub(crate) fn set_mode(&mut self, mode: Mode, window: &mut Window, cx: &mut Context<Self>) {
         self.mode = mode;
+        self.strip_fly_close(cx);
         for tab in &self.tabs {
             tab.editor.update(cx, |e, cx| e.set_mode(mode, cx));
         }
@@ -2176,48 +2891,33 @@ impl Shell {
         cx.notify();
     }
 
-    /// How wide the note showing runs: Normal, a comfortable line of
-    /// reading, or Wide, to the page's edges. Each note's own, and kept.
-    pub(crate) fn set_wide(&mut self, wide: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(path) = self.shown.clone() else { return };
-        if wide == self.wide.contains(&path) {
+    /// How wide every note runs. The app's own, as the mode is: only the
+    /// person changes it, and it is kept. The move starts from wherever
+    /// the sheet is, so a second press while it moves turns it without a
+    /// jump.
+    fn set_width(&mut self, width: PageWidth, window: &mut Window, cx: &mut Context<Self>) {
+        self.strip_fly_close(cx);
+        if width == self.width {
             return;
         }
-        // From as far as a move the other way had got, so a second press
-        // while it moves turns it back without a jump.
-        let begun = match &self.wide_anim {
-            Some((p, _, at)) if *p == path && at.elapsed() < SLIDE => Instant::now() - (SLIDE - at.elapsed()),
-            _ => Instant::now(),
-        };
-        if wide {
-            self.wide.insert(path.clone());
-        } else {
-            self.wide.remove(&path);
-        }
-        self.wide_anim = Some((path, wide, begun));
+        self.width_anim = Some((self.width_level(), Instant::now()));
+        self.width = width;
         self.save_ui(window);
         cx.notify();
     }
 
-    pub(crate) fn shown_wide(&self) -> bool {
-        self.shown.as_ref().is_some_and(|p| self.wide.contains(p))
-    }
-
-    /// How far a note's column is toward Wide, from 0 to 1, eased on
-    /// the window's clock while it moves.
-    fn wide_t(&self, path: &Path) -> f32 {
-        let rest = if self.wide.contains(path) { 1. } else { 0. };
-        match &self.wide_anim {
-            Some((p, to, at)) if p == path && at.elapsed() < SLIDE => {
-                let t = ease_out_quint()(at.elapsed().as_secs_f32() / SLIDE.as_secs_f32());
-                if *to { t } else { 1. - t }
-            }
-            _ => rest,
+    /// Where the sheet stands from Narrow (0) to Wide (2), eased on the
+    /// window's clock.
+    fn width_level(&self) -> f32 {
+        let to = self.width.level();
+        match &self.width_anim {
+            Some((from, at)) if at.elapsed() < SLIDE => from + (to - from) * ease_out_quint()(at.elapsed().as_secs_f32() / SLIDE.as_secs_f32()),
+            _ => to,
         }
     }
 
     fn width_moving(&self) -> bool {
-        self.wide_anim.as_ref().is_some_and(|(p, _, at)| at.elapsed() < SLIDE && self.shown.as_deref() == Some(p.as_path()))
+        self.shown.is_some() && self.width_anim.as_ref().is_some_and(|(_, at)| at.elapsed() < SLIDE)
     }
 
     // -- the page ---------------------------------------------------------------
@@ -2238,12 +2938,19 @@ impl Shell {
                 .cursor_pointer()
                 .when(i > 0, |d| d.border_t_1().border_color(theme.border))
                 .hover(|s| s.bg(theme.foreground.opacity(0.04)))
+                .on_mouse_down(MouseButton::Right, cx.listener({
+                    let p = p.clone();
+                    move |this, ev: &MouseDownEvent, window, cx| {
+                        swallow_click(window, cx);
+                        this.show_recent_menu(p.clone(), ev.position, cx);
+                    }
+                }))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     swallow_click(window, cx);
                     this.open_vault(p.clone(), window, cx)
                 }))
                 .child(Icon::default().path("icons/folder.svg").with_size(px(16.)).text_color(theme.muted_foreground))
-                .child(v_flex().flex_1().min_w_0().child(div().text_size(px(13.)).child(name)).child(div().text_size(px(11.)).text_color(theme.muted_foreground).overflow_hidden().whitespace_nowrap().child(where_)))
+                .child(v_flex().flex_1().min_w_0().child(div().text_size(px(13.)).child(name)).child(div().text_size(px(11.)).text_color(theme.muted_foreground).truncate().child(where_)))
         });
         let has_recent = !UiState::load().recent_vaults.iter().any(|p| p.is_dir());
         v_flex()
@@ -2432,8 +3139,8 @@ impl Shell {
     /// wide, centered; Wide, it runs to the page's edges less the
     /// margin, with more room inside it for the words; between the two
     /// it eases over `SLIDE`, the words wrapping as it goes.
-    fn render_note(&mut self, editor: Entity<Editor>, path: &Path, cx: &mut Context<Self>) -> AnyElement {
-        let t = self.wide_t(path);
+    fn render_note(&mut self, editor: Entity<Editor>, field: Entity<TextareaState>, path: &Path, cx: &mut Context<Self>) -> AnyElement {
+        let level = self.width_level();
         let scroll = editor.read(cx).scroll.clone();
         self.scrollers.name(&scroll);
         let theme = cx.theme().clone();
@@ -2441,33 +3148,31 @@ impl Shell {
         let text_px = self.cfg.editor.text_sizes().note;
         let family = self.look.text_family.clone();
         let title_font = Font { family: family.clone(), features: FontFeatures::default(), fallbacks: self.look.text_fallbacks.clone(), weight: FontWeight::BOLD, style: FontStyle::Normal };
-        let ground = theme.background.blend(theme.muted.opacity(0.3));
-        // The page's width is read as it is painted; before the first
-        // paint the sheet is Normal's width.
-        let page_w = self.page_w.get();
-        let full = (page_w - 2. * f32::from(SHEET_MARGIN)).max(f32::from(READABLE_W));
-        let sheet_w = f32::from(READABLE_W) + (full - f32::from(READABLE_W)) * t;
-        let gutter = SHEET_GUTTER.0 + (SHEET_GUTTER.1 - SHEET_GUTTER.0) * t;
-        let page_w = self.page_w.clone();
-        let entity = cx.entity().downgrade();
+        let ground = page_ground(&theme);
+        let title_px = px(text_px * 1.8);
+        // Where the words cannot change neither can the name; the two
+        // draw alike, so a change of mode moves nothing.
+        let title_el = if editor.read(cx).locked() {
+            div().font(title_font).text_size(title_px).line_height(relative(1.25)).text_color(theme.foreground).child(title).into_any_element()
+        } else {
+            div()
+                .id("note-title")
+                .key_context(TITLE_CONTEXT)
+                .on_action(cx.listener(|this, _: &Escape, window, cx| {
+                    cx.stop_propagation();
+                    this.drop_title(window, cx)
+                }))
+                // Not a press in the margin, which takes the keyboard back.
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                .child(Textarea::new(&field).appearance(false).bordered(false).flush(true).on_secondary_click(Self::input_menu(&field, "edit", cx)).font(title_font).text_size(title_px).line_height(relative(1.25)).text_color(theme.foreground).p_0())
+                .into_any_element()
+        };
+        let sheet_w = sheet_width(level, self.page_w);
+        let gutter = SHEET_GUTTER.0 + (SHEET_GUTTER.1 - SHEET_GUTTER.0) * (level - 1.).max(0.);
         div()
             .relative()
             .size_full()
-            .bg(ground)
-            .child(
-                canvas(
-                    move |bounds, _, cx| {
-                        let w = f32::from(bounds.size.width);
-                        if (page_w.get() - w).abs() > 0.5 {
-                            page_w.set(w);
-                            let _ = entity.update(cx, |_, cx| cx.notify());
-                        }
-                    },
-                    |_, _, _, _| (),
-                )
-                .absolute()
-                .size_full(),
-            )
             .child(
                 // A press in the margin, off the words, takes the keyboard
                 // out of the editor: the note reads whole, with no caret.
@@ -2475,6 +3180,14 @@ impl Shell {
                     crate::editor::stamp("margin press");
                     window.focus(&this.focus, cx);
                     cx.notify();
+                })).on_mouse_down(MouseButton::Right, cx.listener({
+                    // Off the words nothing moves until a choice asks for
+                    // the keyboard (`menu::do_edit`).
+                    let editor = editor.clone();
+                    move |this, ev: &MouseDownEvent, window, cx| {
+                        swallow_click(window, cx);
+                        this.canvas_menu(editor.clone(), ev.position, None, cx);
+                    }
                 })).child(
                     v_flex().min_h_full().p(SHEET_MARGIN).child(
                         v_flex()
@@ -2490,13 +3203,16 @@ impl Shell {
                             .pt(px(22.))
                             .pb(px(120.))
                             .gap(px(10.))
-                            // The note's name over its words, in the words' face.
-                            .child(div().font(title_font).text_size(px(text_px * 1.8)).line_height(relative(1.25)).text_color(theme.foreground).child(title))
+                            // The note's name over its words, in the words'
+                            // face, and a soft line that says it is the name.
+                            .child(title_el)
+                            .child(div().w_full().h(px(1.)).flex_shrink_0().mb(px(6.)).bg(theme.border.opacity(0.7)))
                             .child(editor),
                     ),
                 ),
             )
-            .children(edge_fade(&scroll, ground, true))
+            .child(edge_fade(&scroll, ground, true, px(0.)))
+            .child(edge_fade(&scroll, ground, false, CARD_R))
             .vertical_scrollbar(&scroll)
             .into_any_element()
     }
@@ -2509,15 +3225,16 @@ impl Shell {
                 .relative()
                 .size_full()
                 .child(div().id("page").size_full().overflow_y_scroll().track_scroll(&self.page_scroll).child(page_in("landing", div().child(self.render_landing(cx)))))
-                .children(edge_fade(&self.page_scroll, theme.background, false))
+                .child(edge_fade(&self.page_scroll, page_ground(&theme), false, CARD_R))
                 .vertical_scrollbar(&self.page_scroll)
                 .into_any_element();
         }
-        let Some((editor, path)) = self.shown_tab().map(|t| (t.editor.clone(), t.path.clone())) else {
+        let Some((editor, field, path)) = self.shown_tab().map(|t| (t.editor.clone(), t.title.clone(), t.path.clone())) else {
             return page_in("no-note", div().size_full().child(self.render_no_note(cx)));
         };
-        let key = format!("note-{}", path.display());
-        page_in(key, div().size_full().child(self.render_note(editor, &path, cx)))
+        // By the note and not its path: a rename is not a new page.
+        let key = format!("note-{}", editor.entity_id());
+        page_in(key, div().size_full().child(self.render_note(editor, field, &path, cx)))
     }
 
     /// A sheet: a card over a scrim, with a title, what the sheet asks,
@@ -2566,7 +3283,7 @@ impl Shell {
     /// window it was made in.
     fn sheet_field(id: &'static str, input: &Entity<InputState>, theme: &gpui_component::Theme, cx: &mut Context<Self>) -> AnyElement {
         let focus = input.read(cx).focus_handle(cx);
-        div().id(id).track_focus(&focus).px(px(10.)).h(px(36.)).flex().items_center().rounded(px(8.)).bg(theme.muted).text_size(px(14.)).child(Input::new(input).appearance(false)).into_any_element()
+        div().id(id).track_focus(&focus).px(px(10.)).h(px(36.)).flex().items_center().rounded(px(8.)).bg(theme.muted).text_size(px(14.)).child(Input::new(input).appearance(false).on_secondary_click(Self::input_menu(input, "edit", cx))).into_any_element()
     }
 
     /// A rename: the name in a field. ↩ keeps it.
@@ -2612,7 +3329,7 @@ impl Shell {
                     cx.notify();
                 }))
                 .child(Icon::default().path(icon).with_size(px(16.)).text_color(if on { theme.primary } else { theme.muted_foreground }))
-                .child(v_flex().flex_1().min_w_0().child(div().text_size(px(13.)).child(name)).child(div().text_size(px(11.)).text_color(theme.muted_foreground).overflow_hidden().whitespace_nowrap().child(where_)))
+                .child(v_flex().flex_1().min_w_0().child(div().text_size(px(13.)).child(name)).child(div().text_size(px(11.)).text_color(theme.muted_foreground).truncate().child(where_)))
         };
         let folder_where: SharedString = crate::sys::short_path(&sheet.folder).into();
         let mut rows: Vec<AnyElement> = Vec::new();
@@ -2802,20 +3519,77 @@ fn avatar_sizes(master: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn edge_fade(handle: &ScrollHandle, ground: Hsla, top: bool) -> Option<AnyElement> {
-    let (at, most) = (-handle.offset().y, handle.max_offset().y);
-    let more = if top { at > px(1.) } else { at < most - px(1.) };
-    more.then(|| {
-        let (from, to) = if top { (ground, ground.opacity(0.)) } else { (ground.opacity(0.), ground) };
-        div()
-            .absolute()
-            .left_0()
-            .right_0()
-            .h(px(28.))
-            .map(|d| if top { d.top_0() } else { d.bottom_0() })
-            .bg(linear_gradient(180., linear_color_stop(from, 0.), linear_color_stop(to, 1.)))
-            .into_any_element()
-    })
+/// The page's ground under the tabs' row: the card's color on a tint of
+/// the muted shade, so a sheet's own ground reads as the words' room.
+fn page_ground(theme: &gpui_component::Theme) -> Hsla {
+    theme.background.blend(theme.muted.opacity(0.3))
+}
+
+/// The sheet's width at a level from Narrow (0) to Wide (2) on a page
+/// this wide.
+fn sheet_width(level: f32, page: f32) -> f32 {
+    let wide = (page - 2. * f32::from(SHEET_MARGIN)).max(NARROW_W);
+    let middle = ((NARROW_W + wide) / 2.).min(MIDDLE_MOST);
+    if level <= 1. {
+        NARROW_W + (middle - NARROW_W) * level
+    } else {
+        middle + (wide - middle) * (level - 1.)
+    }
+}
+
+/// A name typed in a field that wraps, as a file's name: its lines joined
+/// by a space, and no space at its ends.
+fn one_line(typed: &str) -> String {
+    typed.split(['\n', '\r']).map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ")
+}
+
+/// How strong an edge's fade stands with this much left to scroll past
+/// it: none at the end, whole once `FADE_ROOM` is left, so it comes and
+/// goes with the scroll instead of snapping on at the first pixel.
+fn fade_strength(room: f32) -> f32 {
+    let t = (room / FADE_ROOM).clamp(0., 1.);
+    t * t * (3. - 2. * t)
+}
+
+/// A scroller's edge fading into its ground while there is more beyond
+/// it. What is under the fade counts as out of sight, as if a hard edge
+/// stood there: the zone takes no press and no hover, only the wheel, so
+/// a caret cannot be put in it (the editor keeps it out the other ways,
+/// `SCROLL_MARGIN`). The zone is as tall as the fade is strong: what
+/// reads whole is live.
+///
+/// Set after the scroller in its parent, and before the scrollbar, which
+/// stays on top. It reads the handle as it is placed, since a scroller's
+/// length is known only once it is laid out: read in `render` it would
+/// be a frame late, and missing from the first frame of a long note.
+///
+/// `corner` is the radius of the rounded card its foot stands in, none
+/// where its ends meet no corner: a square fade would paint the corner
+/// out, since the card's clip is square.
+fn edge_fade(handle: &ScrollHandle, ground: Hsla, top: bool, corner: Pixels) -> AnyElement {
+    let handle = handle.clone();
+    canvas(
+        move |bounds, window, _| {
+            let (at, most) = (-handle.offset().y, handle.max_offset().y);
+            let strength = fade_strength(f32::from(if top { at } else { most - at }));
+            let tall = FADE_H * strength;
+            let y = if top { bounds.top() } else { bounds.bottom() - tall };
+            let dead = (strength > 0.).then(|| window.insert_hitbox(Bounds::new(point(bounds.origin.x, y), size(bounds.size.width, tall)), HitboxBehavior::BlockMouseExceptScroll));
+            (strength, dead)
+        },
+        move |bounds, (strength, dead), window, _| {
+            let Some(dead) = dead else { return };
+            window.set_cursor_style(CursorStyle::Arrow, &dead);
+            let (from, to) = if top { (ground.opacity(strength), ground.opacity(0.)) } else { (ground.opacity(0.), ground.opacity(strength)) };
+            window.paint_quad(fill(bounds, linear_gradient(180., linear_color_stop(from, 0.), linear_color_stop(to, 1.))).corner_radii(Corners { bottom_right: corner, bottom_left: corner, ..Default::default() }));
+        },
+    )
+    .absolute()
+    .left_0()
+    .right_0()
+    .h(FADE_H)
+    .map(|d| if top { d.top_0() } else { d.bottom_0() })
+    .into_any_element()
 }
 
 /// The first of a task and a loop that never ends: the task's answer.
@@ -2859,50 +3633,71 @@ impl Render for Shell {
         let t_side = self.side_t();
         // The sidebar's room in the row, and the lights' place: in gpui's
         // row on the sidebar's title row, a column at the rail's head.
-        let side_w = (SIDEBAR_W * t_side).round();
+        let side_w = (self.sidebar_width() * t_side).round();
         crate::sys::fold_lights(window, t_side, f32::from(RAIL_W / 2.));
         let side_shown = ((t_side - 0.375) / 0.625).clamp(0., 1.);
         // The tabs, their widths set for this draw; a frame more while
         // any of them moves.
         let items: Vec<TabItem> = self.tabs.iter().map(|t| TabItem { path: t.path.clone(), title: vault::title(&t.path), dirty: t.dirty }).collect();
-        self.tabs_row.sync(&items, self.shown.as_deref(), window, cx);
+        let card_x = side_w.max(RAIL_W);
+        self.page_w = f32::from(window.viewport_size().width - card_x - FRAME);
+        let strip_inner = self.page_w - f32::from(STRIP_END * 2. + crate::csd::room(window, cx).1 + (STRIP_CAP + STRIP_END_GAP) * 2.);
+        self.tabs_row.sync(strip_inner - crate::tabs::STRIP_GAP * 2., &items, self.shown.as_deref(), window, cx);
         if self.tabs_row.moving() {
             window.request_animation_frame();
         }
         let root = self.vault_root().map(Path::to_path_buf);
         // No tab, no row: the plus alone on the strip said nothing.
         let center = if items.is_empty() { div().flex_1().min_w_0().into_any_element() } else { self.tabs_row.render(&items, self.shown.as_deref(), root.as_deref(), cx) };
+        if self.shown.is_none() {
+            self.strip_fly = None;
+        }
+        let (modes, widths) = self.render_strip_ends(cx);
         let notice = self.notice.as_ref().map(|(w, _)| w.clone());
         let path_bar = self.render_path_bar(cx);
         let find_bar = (self.find_open && self.shown.is_some()).then(|| {
             div().w_full().flex_shrink_0().overflow_hidden().child(self.render_find_bar(cx)).with_animation("find-bar-in", Animation::new(crate::widgets::MENU_IN).with_easing(ease_out_quint()), |d, t| if t >= 1. { d } else { d.max_h(px(64. * t)).opacity(t) })
         });
         let page = self.render_page(cx);
+        // Under the tabs' row the card is the page's tint, one ground for
+        // the path bar, the find bar and the page, with no line between
+        // them: the sheet's edge is the one line below the tabs. The card
+        // is its two grounds and paints none of its own, each rounding its
+        // two corners: `overflow_hidden` clips to a square, so nothing in
+        // the card rounds a corner for it.
         let card = v_flex()
             .flex_1()
             .min_w_0()
             .h_full()
-            .rounded(CARD_R)
-            .bg(theme.background)
             .text_color(theme.foreground)
             .overflow_hidden()
-            .child(Self::drag_region(h_flex().h(TITLEBAR_H - FRAME).flex_shrink_0().px(STRIP_PAD).items_center().gap(px(6.)), cx).child(center))
-            .children(path_bar)
-            .children(notice.map(|words| div().px(px(16.)).py(px(6.)).text_size(px(12.5)).text_color(theme.danger).child(words)))
-            .children(find_bar)
-            .child(div().relative().flex_1().min_h_0().child(page));
+            .child(Self::drag_region(h_flex().h(TITLEBAR_H - FRAME).flex_shrink_0().pl(STRIP_END).pr(STRIP_END + crate::csd::room(window, cx).1).items_center().gap(STRIP_END_GAP).rounded_t(CARD_R).bg(theme.background), cx).child(modes).child(center).child(widths))
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .rounded_b(CARD_R)
+                    .bg(page_ground(&theme))
+                    .children(path_bar)
+                    .children(notice.map(|words| div().px(px(16.)).py(px(6.)).text_size(px(12.5)).text_color(theme.danger).child(words)))
+                    .children(find_bar)
+                    .child(div().relative().flex_1().min_h_0().child(page)),
+            );
         let pick = Rc::new(|this: &mut Self, what: &'static str, id: SharedString, window: &mut Window, cx: &mut Context<Self>| this.menu_pick(what, id, window, cx));
         let close = Rc::new(|this: &mut Self, cx: &mut Context<Self>| {
             this.pressed = None;
             this.menus.close(cx);
             cx.notify();
         });
-        let menu = if self.menus.open.as_ref().is_some_and(|m| m.what == "entry" || m.what == "vault") || self.menus.gone.as_ref().is_some_and(|(m, _)| m.what == "entry" || m.what == "vault") { self.menus.render(pick, close, cx) } else { None };
+        // The settings window's are drawn there.
+        let ours = |m: &crate::menu::Menu| m.what != "language" && m.what != SETTINGS_EDIT;
+        let menu = if self.menus.open.as_ref().is_some_and(ours) || self.menus.gone.as_ref().is_some_and(|(m, _)| ours(m)) { self.menus.render(pick, close, cx) } else { None };
         let sheet = self.render_new_vault(cx).or_else(|| self.render_rename(cx));
         let search = self.search_open.then(|| self.render_search(window, cx));
         let rail = self.render_rail(cx);
         let fly = self.render_rail_fly(window, cx);
         let strip = self.render_strip(cx);
+        let strip_fly = self.render_strip_fly(card_x, window, cx);
         let this = cx.entity().downgrade();
         let ambient = self.ambient.clone();
         crate::editor::stamp("shell render ends");
@@ -2939,8 +3734,9 @@ impl Render for Shell {
                 let mode = if this.mode == Mode::Reading { Mode::Live } else { Mode::Reading };
                 this.set_mode(mode, window, cx)
             }))
-            .on_action(cx.listener(|this, _: &ShowNormal, window, cx| this.set_wide(false, window, cx)))
-            .on_action(cx.listener(|this, _: &ShowWide, window, cx| this.set_wide(true, window, cx)))
+            .on_action(cx.listener(|this, _: &ShowNarrow, window, cx| this.set_width(PageWidth::Narrow, window, cx)))
+            .on_action(cx.listener(|this, _: &ShowMiddle, window, cx| this.set_width(PageWidth::Middle, window, cx)))
+            .on_action(cx.listener(|this, _: &ShowWide, window, cx| this.set_width(PageWidth::Wide, window, cx)))
             .on_action(cx.listener(|this, _: &ToggleSearch, window, cx| this.toggle_search(window, cx)))
             .on_action(cx.listener(|this, _: &FindInNote, window, cx| this.find_in_note(window, cx)))
             .on_action(cx.listener(|this, _: &FindNext, _, cx| this.find_step(1, cx)))
@@ -2956,6 +3752,7 @@ impl Render for Shell {
                     this.close_search(window, cx);
                 }
                 this.rail_fly_close(cx);
+                this.strip_fly_close(cx);
                 this.pressed = None;
                 this.menus.close(cx);
                 cx.notify();
@@ -2968,6 +3765,28 @@ impl Render for Shell {
                     |_, _, _| (),
                     move |_, _, window, cx| {
                         let router = this.clone();
+                        // The sidebar's edge, once held, follows the
+                        // pointer wherever it goes, and nothing under it
+                        // hears the move.
+                        let (mover, lifter) = (this.clone(), this.clone());
+                        window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
+                            if phase == DispatchPhase::Capture {
+                                let held = mover.update(cx, |s, cx| {
+                                    if s.side_drag {
+                                        s.side_drag_to(e, window, cx);
+                                    }
+                                    s.side_drag
+                                });
+                                if held.unwrap_or(false) {
+                                    cx.stop_propagation();
+                                }
+                            }
+                        });
+                        window.on_mouse_event(move |_: &MouseUpEvent, phase, window, cx| {
+                            if phase == DispatchPhase::Capture {
+                                let _ = lifter.update(cx, |s, cx| s.side_drag_end(window, cx));
+                            }
+                        });
                         window.on_mouse_event(move |e: &ScrollWheelEvent, phase, _, cx| {
                             if phase == DispatchPhase::Capture {
                                 let taken = router.update(cx, |s, _| s.scrollers.route(e)).unwrap_or(false);
@@ -2991,16 +3810,18 @@ impl Render for Shell {
                 h_flex()
                     .size_full()
                     .items_stretch()
-                    .when(t_side > 0., |d| d.child(div().h_full().flex_shrink_0().w(side_w).overflow_hidden().child(div().h_full().w(SIDEBAR_W).opacity(side_shown).child(self.render_sidebar(cx)))))
+                    .when(t_side > 0., |d| d.child(div().h_full().flex_shrink_0().w(side_w).overflow_hidden().child(div().h_full().w(self.sidebar_width()).opacity(side_shown).child(self.render_sidebar(cx)))))
                     .child(div().flex_1().min_w_0().h_full().pt(FRAME).pb(FRAME).pr(FRAME).pl((RAIL_W - side_w).max(px(0.))).child(card)),
             )
             .children(rail)
+            .child(self.render_side_grip(card_x, cx))
             .children(fly)
             .child(strip)
+            .children(strip_fly)
             .children(crate::csd::chrome(window, px(1.) + FRAME / 2. + TITLEBAR_H / 2. - px(12.), |window, _| window.remove_window(), cx))
-            .children(menu)
             .children(sheet)
             .children(search)
+            .children(menu)
             .child(self.ambient.clone())
     }
 }
@@ -3009,8 +3830,9 @@ impl Shell {
     /// For a script: a picture of the window once it is drawn, then quit.
     /// The settings window when it is open, else the main one.
     pub fn shoot_later(&self, path: std::path::PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        let wait = (self.go_ends + 600).max(1100);
         cx.spawn_in(window, async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(1100)).await;
+            cx.background_executor().timer(Duration::from_millis(wait)).await;
             let settings = this.update(cx, |s, _| s.settings).ok().flatten();
             let _ = cx.update(|window, cx| {
                 let shot = match settings {
@@ -3030,6 +3852,9 @@ impl Shell {
     /// vault's first note opened, the sidebar folded, a mode, a row's menu,
     /// the tabs' numbers.
     pub fn go(&mut self, steps: &str, window: &mut Window, cx: &mut Context<Self>) {
+        // Each press and key lands in its own time, on what the one before
+        // it drew, and the picture waits for the last.
+        let mut later = 500;
         for step in steps.split(';') {
             match step {
                 "note" => {
@@ -3041,7 +3866,97 @@ impl Shell {
                 }
                 "sidebar" => self.toggle_sidebar(window, cx),
                 "home" => self.show_home(window, cx),
-                "wide" => self.set_wide(true, window, cx),
+                "narrow" | "middle" | "wide" => self.set_width(PageWidth::from_key(step), window, cx),
+                s if s.starts_with("key=") => {
+                    if let Ok(keystroke) = Keystroke::parse(&s["key=".len()..]) {
+                        // As `press=`: into this window alone.
+                        let wait = later;
+                        later += GO_STEP;
+                        cx.spawn_in(window, async move |_, cx| {
+                            cx.background_executor().timer(Duration::from_millis(wait)).await;
+                            let _ = cx.update(|window, cx| {
+                                window.dispatch_event(PlatformInput::KeyDown(KeyDownEvent { keystroke, is_held: false, prefer_character_input: false }), cx);
+                            });
+                        })
+                        .detach();
+                    }
+                }
+                s if s.starts_with("title=") => {
+                    if let Some(tab) = self.shown_tab() {
+                        let (field, name) = (tab.title.clone(), s["title=".len()..].to_string());
+                        window.focus(&field.read(cx).focus_handle(cx), cx);
+                        field.update(cx, |f, cx| f.set_value(name, window, cx));
+                    }
+                }
+                s if s.starts_with("size=") => {
+                    // The window to that size with no pointer in it, as a
+                    // tiling key does, in its turn among the presses.
+                    let n: Vec<f32> = s["size=".len()..].split(',').filter_map(|n| n.parse().ok()).collect();
+                    if n.len() == 2 {
+                        let wait = later;
+                        later += GO_STEP;
+                        cx.spawn_in(window, async move |_, cx| {
+                            cx.background_executor().timer(Duration::from_millis(wait)).await;
+                            let _ = cx.update(|window, _| window.resize(size(px(n[0]), px(n[1]))));
+                        })
+                        .detach();
+                    }
+                }
+                s if s.starts_with("press=") || s.starts_with("rpress=") || s.starts_with("drag=") => {
+                    // `press=x,y` or `press=x,y,clicks`; `rpress=x,y`, the
+                    // right button; `drag=x,y,to_x,to_y`.
+                    // Once the frame it aims at is drawn, into this window
+                    // alone: nothing reaches the screen.
+                    let dragging = s.starts_with("drag=");
+                    let right = s.starts_with("rpress=");
+                    let n: Vec<f32> = s.split_once('=').map(|(_, v)| v.split(',').filter_map(|n| n.parse().ok()).collect()).unwrap_or_default();
+                    if n.len() >= 2 {
+                        let position = point(px(n[0]), px(n[1]));
+                        let to = if dragging && n.len() == 4 { point(px(n[2]), px(n[3])) } else { position };
+                        let click_count = if !dragging && n.len() == 3 { n[2] as usize } else { 1 };
+                        let wait = later;
+                        later += GO_STEP;
+                        cx.spawn_in(window, async move |_, cx| {
+                            cx.background_executor().timer(Duration::from_millis(wait)).await;
+                            let _ = cx.update(|window, cx| {
+                                let (button, modifiers) = (if right { MouseButton::Right } else { MouseButton::Left }, Modifiers::default());
+                                window.dispatch_event(PlatformInput::MouseMove(MouseMoveEvent { position, pressed_button: None, modifiers }), cx);
+                                window.dispatch_event(PlatformInput::MouseDown(MouseDownEvent { button, position, modifiers, click_count, first_mouse: false }), cx);
+                                if dragging {
+                                    window.dispatch_event(PlatformInput::MouseMove(MouseMoveEvent { position: to, pressed_button: Some(button), modifiers }), cx);
+                                }
+                                window.dispatch_event(PlatformInput::MouseUp(MouseUpEvent { button, position: to, modifiers, click_count }), cx);
+                            });
+                        })
+                        .detach();
+                    }
+                }
+                "sel" => {
+                    // What is selected, on stderr: what ⌘C would copy,
+                    // with no clipboard touched.
+                    let wait = later;
+                    later += GO_STEP;
+                    cx.spawn_in(window, async move |this, cx| {
+                        cx.background_executor().timer(Duration::from_millis(wait)).await;
+                        let _ = this.update(cx, |s, cx| {
+                            if let Some(e) = s.shown_editor() {
+                                eprintln!("sel {:?}", e.read(cx).copied_text());
+                            }
+                        });
+                    })
+                    .detach();
+                }
+                s if s.starts_with("caret=") => {
+                    if let (Some(e), Ok(line)) = (self.shown_editor(), s["caret=".len()..].parse::<usize>()) {
+                        e.update(cx, |e, cx| e.move_to_line(line, cx));
+                    }
+                }
+                s if s.starts_with("scroll=") => {
+                    if let (Some(e), Ok(y)) = (self.shown_editor(), s["scroll=".len()..].parse::<f32>()) {
+                        let scroll = e.read(cx).scroll.clone();
+                        scroll.set_offset(point(px(0.), px(-y)));
+                    }
+                }
                 "search" => {
                     self.open_search(window, cx);
                     self.search_input.update(cx, |s, cx| s.set_value("note", window, cx));
@@ -3094,11 +4009,69 @@ impl Shell {
             }
         }
         cx.notify();
+        self.go_ends = later;
     }
 }
 
 impl Focusable for Shell {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // By name: a glob here would bring in gpui's own `test`.
+    use super::{FADE_ROOM, NARROW_W, fade_strength, one_line, sheet_width};
+
+    #[test]
+    fn narrow_is_narrowest_and_wide_is_the_page() {
+        // A window with room to spare, a laptop's whole screen, a big
+        // monitor's.
+        for page in [900., 1456., 3000.] {
+            let (narrow, middle, wide) = (sheet_width(0., page), sheet_width(1., page), sheet_width(2., page));
+            assert_eq!(narrow, NARROW_W);
+            assert!(middle - narrow > 40. && wide - middle > 40., "{page}: {narrow} {middle} {wide}");
+            assert_eq!(wide, page - 32.);
+        }
+    }
+
+    #[test]
+    fn middle_stays_a_line_to_read_on_a_big_monitor() {
+        assert_eq!(sheet_width(1., 3000.), super::MIDDLE_MOST);
+    }
+
+    #[test]
+    fn a_change_of_width_passes_through_every_width_between() {
+        let page = 1456.;
+        let steps: Vec<f32> = (0..=40).map(|i| sheet_width(i as f32 / 20., page)).collect();
+        assert!(steps.windows(2).all(|w| w[1] > w[0] && w[1] - w[0] < 40.));
+    }
+
+    #[test]
+    fn with_no_room_every_width_is_narrow() {
+        for page in [0., 500., 731.] {
+            assert_eq!(sheet_width(2., page), NARROW_W);
+            assert_eq!(sheet_width(1., page), NARROW_W);
+        }
+    }
+
+    #[test]
+    fn a_typed_name_is_one_line() {
+        assert_eq!(one_line("  March trip "), "March trip");
+        assert_eq!(one_line("March\ntrip"), "March trip");
+        assert_eq!(one_line("March\r\n\n  trip\n"), "March trip");
+        assert_eq!(one_line(" \n "), "");
+    }
+
+    #[test]
+    fn an_edge_fade_grows_with_the_room_left() {
+        assert_eq!(fade_strength(0.), 0.);
+        assert_eq!(fade_strength(-40.), 0.);
+        assert_eq!(fade_strength(FADE_ROOM), 1.);
+        assert_eq!(fade_strength(FADE_ROOM * 4.), 1.);
+        let steps: Vec<f32> = (0..=56).map(|r| fade_strength(r as f32 * FADE_ROOM / 56.)).collect();
+        assert!(steps.windows(2).all(|w| w[1] > w[0]), "it rises at every step");
+        assert!(steps.windows(2).all(|w| w[1] - w[0] < 0.05), "no step is a jump");
     }
 }

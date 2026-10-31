@@ -546,6 +546,29 @@ impl Shown {
     }
 }
 
+/// The part of a line from `from` to `to` with the hidden ranges taken
+/// out. The ranges may overlap and come in any order, and may reach past
+/// either end.
+pub fn visible_part(text: &str, from: usize, to: usize, hidden: &[Range<usize>]) -> String {
+    let mut ranges: Vec<&Range<usize>> = hidden.iter().collect();
+    ranges.sort_by_key(|r| r.start);
+    let mut out = String::new();
+    let mut at = from;
+    for r in ranges {
+        if r.start >= to {
+            break;
+        }
+        if r.start > at {
+            out.push_str(&text[at..r.start]);
+        }
+        at = at.max(r.end);
+    }
+    if at < to {
+        out.push_str(&text[at..to]);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -677,5 +700,20 @@ mod tests {
     fn table_cells_are_split_on_unescaped_bars() {
         assert_eq!(cells("| a \\| b | c |"), vec!["a | b", "c"]);
         assert_eq!(cells("x|y"), vec!["x", "y"]);
+    }
+
+    #[test]
+    fn a_line_reads_without_what_is_hidden() {
+        let line = "Plain **bold** and [text](http://a.b).";
+        let hidden = [6..8, 12..14, 19..20, 24..37];
+        assert_eq!(visible_part(line, 0, line.len(), &hidden), "Plain bold and text.");
+        // Out of order and overlapping.
+        assert_eq!(visible_part(line, 0, line.len(), &[24..37, 19..20, 12..14, 6..8, 7..8]), "Plain bold and text.");
+        // A selection that begins or ends inside a mark, or inside the words.
+        assert_eq!(visible_part(line, 7, 10, &hidden), "bo");
+        assert_eq!(visible_part(line, 10, 13, &hidden), "ld");
+        assert_eq!(visible_part(line, 0, 0, &hidden), "");
+        // Characters of many bytes.
+        assert_eq!(visible_part("费城 **纽约**", 0, 17, &[7..9, 15..17]), "费城 纽约");
     }
 }
