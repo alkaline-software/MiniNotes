@@ -698,28 +698,37 @@ impl Shell {
         cx.notify();
     }
 
-    /// About: the title card, set as a film's first one is, the credits,
-    /// and the updates under them.
+    /// About, the same in every product: the title card, set as a film's
+    /// first one is, the pills to the source and the notes, and the updates.
     fn about_rows(&mut self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let theme = cx.theme().clone();
-        let link = |id: &'static str, words: &'static str, url: &'static str| {
-            div().id(id).text_color(theme.link).cursor_pointer().hover(|s| s.underline()).on_click(move |_, _, _| crate::sys::open(url)).child(t(words)).into_any_element()
-        };
+        let hover = theme.link;
+        let studio = div()
+            .id("studio-link")
+            .cursor_pointer()
+            .text_color(theme.foreground)
+            .text_decoration_1()
+            .text_decoration_color(theme.foreground.opacity(0.35))
+            .hover(move |s| s.text_color(hover).text_decoration_color(hover))
+            .on_click(|_, _, _| crate::sys::open("https://github.com/alkaline-software"))
+            .child("Alkaline Software")
+            .into_any_element();
         let title = v_flex()
+            .w_full()
             .items_center()
+            .pt(px(30.))
+            .pb(px(28.))
+            .child(weave(&t("{studio} presents"), vec![("studio", studio)], h_flex().text_size(px(14.)).text_color(theme.muted_foreground).gap(px(0.))))
+            .child(img("icon/icon-512.png").mt(px(18.)).size(px(88.)))
+            .child(div().mt(px(6.)).child(wordmark("Onyx", 42., theme.primary, cx)))
+            .child(div().mt(px(4.)).text_size(px(12.5)).text_color(theme.muted_foreground).child(tf("Version {version}", &[("version", &update::current_version())])));
+        let pills = h_flex()
+            .w_full()
+            .justify_center()
+            .pt(px(4.))
             .gap(px(8.))
-            .py(px(26.))
-            .child(weave(&t("{studio} presents"), vec![("studio", link("studio-link", "Alkaline Software", "https://github.com/alkaline-software"))], h_flex().text_size(px(11.)).text_color(theme.muted_foreground).gap(px(0.))))
-            .child(img("icon/icon-512.png").size(px(84.)))
-            .child(wordmark("Onyx", 26., theme.primary, cx))
-            .child(div().text_size(px(11.5)).text_color(theme.muted_foreground).child(tf("Version {version}", &[("version", &update::current_version())])))
-            .child(
-                h_flex()
-                    .pt(px(6.))
-                    .gap(px(8.))
-                    .child(small_pill("about-source", "icons/github.svg", t("Source"), Press::Quiet, false, &theme).on_click(|_, _, _| crate::sys::open(&update::repo_page())))
-                    .child(small_pill("about-notes", "icons/book-open.svg", t("Release Notes"), Press::Quiet, false, &theme).on_click(|_, _, _| crate::sys::open(&update::release_page(update::current_version())))),
-            );
+            .child(small_pill("about-source", "icons/github.svg", "GitHub", Press::Quiet, false, &theme).h(px(28.)).on_click(|_, _, _| crate::sys::open(&update::repo_page())))
+            .child(small_pill("about-notes", "icons/file-text.svg", t("Release Notes"), Press::Quiet, false, &theme).h(px(28.)).on_click(|_, _, _| crate::sys::open(&update::release_page(update::current_version()))));
         let u = self.update.clone();
         let (icon, words, kind) = match (&u.found, u.downloading) {
             (_, Some(p)) => ("icons/download.svg", tf("Downloading… {percent}%", &[("percent", &p)]), Press::Primary),
@@ -747,9 +756,9 @@ impl Shell {
             }),
             cx,
         );
-        let mut rows = vec![group(None, None, vec![title.into_any_element()], &theme)];
+        let mut rows = vec![group(None, None, vec![title.into_any_element()], &theme), pills.into_any_element()];
         if !update::from_store() {
-            rows.push(group(None, None, vec![line(t("Updates").into(), said, button.into_any_element(), &theme), line(t("Check automatically").into(), None, check, &theme)], &theme));
+            rows.push(div().w_full().pt(px(12.)).child(group(None, None, vec![line(t("Updates").into(), said, button.into_any_element(), &theme), line(t("Check automatically").into(), None, check, &theme)], &theme)).into_any_element());
         }
         rows
     }

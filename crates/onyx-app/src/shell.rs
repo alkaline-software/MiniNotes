@@ -1888,6 +1888,8 @@ impl Shell {
     /// Note row and the New Folder row, the notes card with the tree,
     /// and the foot with the person's picture, name and the settings.
     fn render_sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
+        let waiting = self.update.found.is_some();
+        let gear_dot = self.motion.presence("gear-dot", waiting, cx);
         let theme = self.frame_theme(cx);
         let accent = theme.foreground.opacity(0.1);
         let brand = h_flex().gap(px(5.)).items_center().child(img("icon/icon-128.png").size(px(31.)).flex_shrink_0()).child(crate::widgets::wordmark("Onyx", 23.5, theme.primary, cx));
@@ -1961,6 +1963,7 @@ impl Shell {
             .child(
                 div()
                     .id("settings-gear")
+                    .relative()
                     .size(px(26.))
                     .flex_shrink_0()
                     .rounded(px(6.))
@@ -1975,7 +1978,10 @@ impl Shell {
                         swallow_click(window, cx);
                         this.open_settings(None, window, cx);
                     }))
-                    .child(Icon::new(IconName::Settings).with_size(px(16.)).text_color(theme.muted_foreground)),
+                    .child(Icon::new(IconName::Settings).with_size(px(16.)).text_color(theme.muted_foreground))
+                    // A newer version waiting: seen with the settings shut,
+                    // as About's dot in the rail is with them open.
+                    .children(crate::widgets::waiting_dot(waiting, gear_dot, theme.primary)),
             );
         v_flex()
             .w(self.sidebar_width())
@@ -3977,6 +3983,9 @@ impl Shell {
                     }
                 }
                 "close" => self.close_nearest(window, cx),
+                // A newer version waits, as a check finding one says: the
+                // gear's and About's dots. Nothing is fetched.
+                "updatefound" => self.update.found = Some("9.9.9".into()),
                 "hints" => self.tabs_row.hints = true,
                 "end" => {
                     if let Some(e) = self.shown_editor() {

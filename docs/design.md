@@ -58,7 +58,7 @@ Laid out as the studio's windows are, after emaki's: the frame is the window's g
 
 ### The settings
 
-The studio's settings window, 820 by 600, three sections: **Appearance** (the appearance, the accent, the person's picture and name, and the language at the right of the title), **Editor** (the words' face and code's face as tiles drawn in themselves, the text size as a segmented control) and **About** (the title card, the credits, the updates). Each fits without scrolling.
+The studio's settings window, 820 by 600, three sections: **Appearance** (the appearance, the accent, the person's picture and name, and the language at the right of the title), **Editor** (the words' face and code's face as tiles drawn in themselves, the text size as a segmented control) and **About** (the studio's own, the same in every product: the title card, pills to the source and the release's notes, and the updates; Onyx has no site, so no pill to one, and an English name stands alone). Each fits without scrolling.
 
 ## Menus
 

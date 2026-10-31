@@ -99,6 +99,18 @@ pub fn wordmark(name: &'static str, size: f32, color: Hsla, cx: &App) -> Div {
         .child(word(0.5))
 }
 
+/// The dot on the gear while a newer version waits, at its top right, so
+/// it is seen with the settings shut: `moving` from `Motion::presence`.
+pub fn waiting_dot(on: bool, moving: Option<(bool, u32)>, color: Hsla) -> Option<AnyElement> {
+    (on || moving.is_some()).then(|| {
+        let dot = div().absolute().top(px(3.)).right(px(3.)).size(px(7.)).rounded_full().bg(color);
+        match moving {
+            Some((coming, n)) => dot.with_animation(ElementId::NamedInteger("gear-dot".into(), n as u64), Animation::new(FOLD_ANIM).with_easing(ease_out_quint()), move |d, t| d.opacity(if coming { t } else { 1. - t })).into_any_element(),
+            None => dot.into_any_element(),
+        }
+    })
+}
+
 /// The icon a key's sign is drawn with: none for a character that is not
 /// one. Off a Mac ⌘ and ⌥ are the words Ctrl and Alt on their caps.
 fn key_sign(c: char) -> Option<&'static str> {
