@@ -30,6 +30,8 @@ rust-embed = { version = "8", features = ["debug-embed", "include-exclude"] }
 opener = "0.7"
 # The system's preferred languages, for the window's (`i18n::pick`).
 sys-locale = "0.3"
+# A code block's text as the highlighter takes it.
+ropey = "2.0.0-beta.1"
 # Markdown read for the live preview: every span with where it stands in the text.
 pulldown-cmark = { version = "0.13", default-features = false }
 # A caret steps by grapheme, not by byte or by char.
@@ -47,7 +49,6 @@ velopack = "=1.2.161"
 winresource = "0.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-ropey = "2.0.0-beta.1"
 objc2 = "0.6"
 block2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSView", "NSWindow", "NSResponder", "NSApplication", "NSImage", "NSColor"] }
@@ -64,11 +65,11 @@ productName = "Onyx"
 authors = ["Alkaline Software"]
 publisher = "Alkaline Software"
 identifier = "com.alkalinesoftware.onyx"
-description = "A sample app built to the Alkaline Software constitution."
-longDescription = "Onyx is the template every Alkaline Software app begins from: the window, the settings, the motion and the release, ready to be renamed."
+description = "A note-taking app for a folder of plain markdown files."
+longDescription = "Onyx shows a folder of plain markdown files in a sidebar and draws a note as it reads while you write it."
 homepage = "https://github.com/alkaline-software/onyx"
 licenseFile = "../../LICENSE"
-category = "DeveloperTool"
+category = "Productivity"
 icons = ["assets/icon/icon.icns", "assets/icon/icon.ico", "assets/icon/icon-*.png"]
 outDir = "../../dist"
 binaries = [{ path = "Onyx", main = true }]
